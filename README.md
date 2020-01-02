@@ -10,7 +10,9 @@ Descompacte o projeto onde irá rodar a aplicação
 
 Copie o arquivo `.env.example` para `.env`.
 
-> **OBS**: Caso vá utilizar com um banco de dados externo, remova o serviço `db` do arquivo `docker-compose.yml` e configure o arquivo `.env` com as credenciais de acesso do banco.
+> **OBS¹**: Caso vá utilizar com um banco de dados externo, remova o serviço `db` do arquivo `docker-compose.yml` e configure o arquivo `.env` com as credenciais de acesso do banco.
+
+> **OBS²**: Caso utilize um banco de dados na rede do Docker, o volume é persistido na pasta `.docker/volumes/data` e para levantar a aplicação com um dump de banco novo, certifique-se de que a pasta `.docker/volumes/data` não exista e coloque o dump novo na pasta `.docker/volumes/dump`.
 
 Execute o comando que segue na raiz do projeto:
 

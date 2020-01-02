@@ -29,16 +29,8 @@ if (isset($_POST['formato']) && $_POST['formato'] == 'csv') {
   <form class="form-inline" method="POST">
   <div class="form-row align-items-center">
     <div class="col-auto align-self-end">
-      <label for="icmp">ID Evento</label>
-      <input type="number" name="id" value="<?php echo $_POST['id']; ?>" class="form-control" placeholder="ID" />
-    </div>
-    <div class="col-auto align-self-end">
-      <label for="icmp">Nome Evento</label>
-      <input type="text" name="name" value="<?php echo $_POST['name']; ?>" class="form-control" placeholder="Nome evento" maxlength="150" />
-    </div>
-    <div class="col-auto align-self-end">
-      <label for="icmp">Nome do host</label>
-      <input type="text" name="host" value="<?php echo $_POST['host']; ?>" class="form-control" placeholder="Host" maxlength="30" />
+      <label for="icmp">Nome da OLT</label>
+      <input type="text" name="host" value="<?php echo $_POST['host']; ?>" class="form-control" placeholder="OLT" maxlength="30" />
     </div>
     <div class="col-auto align-self-end">
       <label for="icmp">Nome da ONU</label>
@@ -46,17 +38,30 @@ if (isset($_POST['formato']) && $_POST['formato'] == 'csv') {
     </div>
     <div class="col-auto align-self-end">
       <label for="data-inicio">Data início</label>
-      <input type="date" name="start-date" value="<?php echo $_POST['start-date']; ?>" class="form-control" id="data-inicio">
+      <input type="date" name="start-date" value="<?php echo $_POST['start-date']; ?>" class="form-control" id="data-inicio" required>
       <input type="time" name="start-time" value="<?php echo $_POST['start-time']; ?>" class="form-control" />
     </div>
     <div class="col-auto align-self-end">
       <label for="data-fim">Data fim</label>
-      <input type="date" name="recovery-date" value="<?php echo $_POST['recovery-date']; ?>" class="form-control" id="data-fim">
+      <input type="date" name="recovery-date" value="<?php echo $_POST['recovery-date']; ?>" class="form-control" id="data-fim" required>
       <input type="time" name="recovery-time" value="<?php echo $_POST['recovery-time']; ?>" class="form-control" />
     </div>
     <div class="col-auto align-self-end text-sm-center">
-      <label for="icmp">ICMP</label>
-      <input type="checkbox" name="icmp" class="form-control" id="icmp"<?php echo !empty($_POST['icmp'])? ' checked="checked"':'';?> />
+      <label for="icmp-sim">ICMP</label>
+      <div class="form-check form-check-inline m-1">
+        <input class="form-check-input" type="radio" name="icmp" id="icmp-sim" value="1"<?php
+            if (!isset($_POST['icmp']) || $_POST['icmp'] == '1') {
+                echo ' checked="checked"';
+            }?> />
+        <label class="form-check-label" for="icmp-sim">Sim</label>
+      </div>
+      <div class="form-check form-check-inline m-1">
+        <input class="form-check-input" type="radio" name="icmp" id="icmp-nao" value="0"<?php
+            if (isset($_POST['icmp']) && $_POST['icmp'] == '0') {
+                echo ' checked="checked"';
+            }?> />
+        <label class="form-check-label" for="icmp-nao">Não</label>
+      </div>
     </div>
     <div class="col-auto align-self-end text-sm-center">
       <label for="separador">Separador CSV</label>
