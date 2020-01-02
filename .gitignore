@@ -1,0 +1,15 @@
+### Composer ###
+composer.phar
+/vendor/
+
+### dotenv ###
+.env
+
+### VisualStudioCode ###
+.vscode/*
+
+### Database dump
+*.sql
+
+### Docker volumes
+.docker/volumes

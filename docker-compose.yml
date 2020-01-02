@@ -1,0 +1,22 @@
+version: "3.0"
+services:
+  php7:
+    build: .docker/php7
+    volumes:
+      - .:/php7
+      - ~/.composer:/root/.composer
+    ports:
+      - 80:8000
+    environment:
+      XDEBUG_CONFIG: "remote_host=172.17.0.1 remote_enable=1"
+  db:
+    image: mariadb
+    ports:
+      - "3306:3306"
+    volumes:
+      -  ./.docker/mysql/conf:/etc/mysql/conf.d
+      - ./.docker/volumes/mysql/dump:/docker-entrypoint-initdb.d
+      - ./.docker/volumes/mysql/data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWD}
+      - MYSQL_DATABASE=${DB_NAME}
