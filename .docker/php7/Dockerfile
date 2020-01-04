@@ -15,8 +15,8 @@ RUN apt-get install -y \
 RUN pecl install xdebug-2.8.0beta1 \
     && docker-php-ext-enable xdebug
 
-RUN curl https://getcomposer.org/composer.phar --output /usr/bin/composer
-RUN chmod +x /usr/bin/composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN composer --version
 
 WORKDIR /php7
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
