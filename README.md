@@ -1,4 +1,6 @@
-# Relatórios Zabbix OLT & ONU & ICMP
+# Relatórios Zabbix SLA
+
+Geração de relatório de SLA para o Zabbix
 
 ## Instalação
 
