@@ -18,8 +18,6 @@ class Report
     private $stmt;
     public function __construct()
     {
-        $connectionParams = array(
-        );
         $this->conn = \Doctrine\DBAL\DriverManager::getConnection([
             'dbname' => getenv('DB_NAME'),
             'user' => getenv('DB_USER'),
@@ -29,9 +27,55 @@ class Report
         ]);
     }
 
+    public function getBaseQuery()
+    {
+        $queryBuilder = $this->conn->createQueryBuilder();
+        $queryBuilder
+            ->select(
+                <<<QUERY
+                CASE WHEN hosts.host IS NOT NULL THEN hosts.host
+                            WHEN alert_start.message LIKE '%Host:%' THEN TRIM(TRAILING '\\r' FROM TRIM(TRAILING '\\n' FROM REPLACE(REGEXP_SUBSTR(alert_start.message, 'Host:.*\\n'), 'Host: ', '')))
+                            WHEN alert_start.message LIKE '%<b>%' THEN REPLACE(REPLACE(REGEXP_SUBSTR(alert_start.message, '<b>.*</b>'), '<b> ', ''), ' </b>', '')
+                        END AS host
+                QUERY,
+                "TRIM(REGEXP_SUBSTR(start.name, 'onu_[0-9/: ]+')) AS onu",
+                "recovery.clock - start.clock AS duration"
+            )
+            ->from('events', 'start')
+            ->leftJoin('start', 'event_recovery', 'er', 'er.eventid = start.eventid')
+            ->leftJoin('er', 'events', 'recovery', 'recovery.eventid = er.r_eventid')
+            ->leftJoin('start', 'alerts', 'alert_start', 'alert_start.eventid = start.eventid AND alert_start.mediatypeid = 5')
+            ->leftJoin('start', 'triggers', 'triggers', 'start.objectid = triggers.triggerid')
+            ->leftJoin('triggers', 'functions', 'functions', 'functions.triggerid = triggers.triggerid')
+            ->leftJoin('functions', 'items', 'items', 'items.itemid = functions.itemid')
+            ->leftJoin('items', 'hosts', 'hosts', 'items.hostid = hosts.hostid')
+            ->where(
+                $queryBuilder->expr()->andX(
+                    $queryBuilder->expr()->orX(
+                        $queryBuilder->expr()->eq('start.severity', 5),
+                        $queryBuilder->expr()->eq('recovery.severity', 0)
+                    ),
+                    $queryBuilder->expr()->orX(
+                        $queryBuilder->expr()->andX(
+                            $queryBuilder->expr()->isNotNull('hosts.host'),
+                            $queryBuilder->expr()->neq('hosts.host', "''")
+                        ),
+                        $queryBuilder->expr()->like('alert_start.message', "'%Host:%'"),
+                        $queryBuilder->expr()->like('alert_start.message', "'%<b>%'")
+                    )
+                )
+            );
+        return $queryBuilder;
+    }
+
+    public function getAllHosts()
+    {
+        $sql = 'SELECT host FROM ('.$this->getBaseQuery().') x GROUP BY host ORDER BY host';
+        return $this->conn->executeQuery($sql)->fetchColumn();
+    }
+
     public function getQuery()
     {
-
         $decimalPlaces = getenv('DECIMAL_PLACES');
         $sql = <<<QUERY
             SELECT host,
@@ -60,22 +104,7 @@ class Report
                 SUM(duration) AS downtime,
                 ? - ? AS total_time
             FROM (
-                    SELECT CASE WHEN hosts.host IS NOT NULL THEN hosts.host
-                                WHEN alert_start.message LIKE '%Host:%' THEN TRIM(TRAILING '\r' FROM TRIM(TRAILING '\n' FROM REPLACE(REGEXP_SUBSTR(alert_start.message, 'Host:.*\n'), 'Host: ', '')))
-                                WHEN alert_start.message LIKE '%<b>%' THEN REPLACE(REPLACE(REGEXP_SUBSTR(alert_start.message, '<b>.*</b>'), '<b> ', ''), ' </b>', '')
-                            END AS host,
-                        TRIM(REGEXP_SUBSTR(start.name, 'onu_[0-9/: ]+')) AS onu,
-                        recovery.clock - start.clock AS duration
-                    FROM events start
-                    LEFT JOIN event_recovery er ON er.eventid = start.eventid
-                    LEFT JOIN events recovery ON recovery.eventid = er.r_eventid
-                    LEFT JOIN alerts alert_start ON alert_start.eventid = start.eventid AND alert_start.mediatypeid = 5
-                    LEFT JOIN triggers ON start.objectid = triggers.triggerid
-                    LEFT JOIN functions ON functions.triggerid = triggers.triggerid
-                    LEFT JOIN items ON items.itemid = functions.itemid
-                    LEFT JOIN hosts ON items.hostid = hosts.hostid
-                    WHERE (start.severity = 5 OR recovery.severity = 0)
-                    AND ((hosts.host IS NOT NULL AND hosts.host <> '') OR alert_start.message LIKE '%Host:%' OR alert_start.message LIKE '%<b>%')
+                {$this->getBaseQuery()}
             QUERY;
 
         if (!empty($_POST['start-date'])) {
@@ -196,12 +225,4 @@ class Report
             <?php
         }
     }
-}
-
-$report = new Report();
-$report->run();
-if (isset($_POST['formato']) && $_POST['formato'] == 'csv') {
-    $report->view('csv');
-} else {
-    $report->view('html');
 }

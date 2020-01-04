@@ -7,9 +7,15 @@ if(file_exists('.env')) {
     $dotenv->load();
 }
 
-if (isset($_POST['formato']) && $_POST['formato'] == 'csv') {
-    require 'report.php';
-    return;
+require 'report.php';
+$report = new Report();
+
+if (isset($_POST['formato'])) {
+    $report->run();
+    if ($_POST['formato'] == 'csv') {
+        $report->view('csv');
+        return;
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -89,7 +95,7 @@ if (isset($_POST['formato']) && $_POST['formato'] == 'csv') {
 <?php
 if (isset($_POST['formato']) && $_POST['formato'] == 'html') {
   ?><div class="container-fluid p-3"><?php
-  require 'report.php';
+  $report->view('html');
   ?></div><?php
 }
 ?>
