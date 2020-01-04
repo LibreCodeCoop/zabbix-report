@@ -29,12 +29,12 @@ if (isset($_POST['formato']) && $_POST['formato'] == 'csv') {
   <form class="form-inline" method="POST">
   <div class="form-row align-items-center">
     <div class="col-auto align-self-end">
-      <label for="icmp">Nome da OLT</label>
-      <input type="text" name="host" value="<?php echo $_POST['host']; ?>" class="form-control" placeholder="OLT" maxlength="30" />
+      <label for="icmp">Nome do host</label>
+      <input type="text" name="host" value="<?php echo $_POST['host']; ?>" class="form-control" placeholder="Nome do host" maxlength="30" />
     </div>
     <div class="col-auto align-self-end">
-      <label for="icmp">Nome da ONU</label>
-      <input type="text" name="onu" value="<?php echo $_POST['onu']; ?>" class="form-control" placeholder="Nome da ONU" maxlength="30" />
+      <label for="icmp">Nome do item</label>
+      <input type="text" name="item" value="<?php echo $_POST['item']; ?>" class="form-control" placeholder="Nome do item" maxlength="30" />
     </div>
     <div class="col-auto align-self-end">
       <label for="data-inicio">Data início</label>

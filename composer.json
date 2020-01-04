@@ -1,5 +1,8 @@
 {
     "require-dev": {
         "vlucas/phpdotenv": "^4.1"
+    },
+    "require": {
+        "doctrine/dbal": "^2.10"
     }
 }
