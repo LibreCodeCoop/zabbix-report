@@ -1,5 +1,7 @@
 <?php
 
+namespace ZabbixReport;
+
 class Report
 {
     /**
@@ -108,21 +110,21 @@ class Report
             QUERY;
 
         if (!empty($_POST['start-date'])) {
-            $value = DateTime::createFromFormat('Y-m-d', $_POST['start-date']);
+            $value = \DateTime::createFromFormat('Y-m-d', $_POST['start-date']);
             if ($value) {
                 if (!empty($_POST['start-time'])) {
-                    $startTime = DateTime::createFromFormat('Y-m-d H:i', $_POST['start-date'] . ' ' . $_POST['start-time']);
+                    $startTime = \DateTime::createFromFormat('Y-m-d H:i', $_POST['start-date'] . ' ' . $_POST['start-time']);
                 } else {
                     $startTime = $value;
                 }
             }
             if ($startTime && !empty($_POST['recovery-date'])) {
-                $value = DateTime::createFromFormat('Y-m-d', $_POST['recovery-date']);
+                $value = \DateTime::createFromFormat('Y-m-d', $_POST['recovery-date']);
                 if ($value) {
                     if (!empty($_POST['recovery-time'])) {
-                        $recoveryTime = DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' ' . $_POST['recovery-time'].':59');
+                        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' ' . $_POST['recovery-time'].':59');
                     } else {
-                        $recoveryTime = DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' 23:59:59');
+                        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' 23:59:59');
                     }
                 }
             }
@@ -186,17 +188,17 @@ class Report
         $out = fopen('php://output', 'w');
     
         $delimiter = $_POST['separador'] == ';' ? ';' : ',';
-        $row = $this->stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $this->stmt->fetch(\PDO::FETCH_ASSOC);
         fputcsv($out, array_keys($row), $delimiter);
         fputcsv($out, $row, $delimiter);
-        while ($row = $this->stmt->fetch(PDO::FETCH_ASSOC)) {
+        while ($row = $this->stmt->fetch(\PDO::FETCH_ASSOC)) {
             fputcsv($out, $row, $delimiter);
         }
     }
 
     private function viewHtml()
     {
-        $row = $this->stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $this->stmt->fetch(\PDO::FETCH_ASSOC);
         if (!$row) {
             echo 'Sem resultados';
         } else {
@@ -217,7 +219,7 @@ class Report
             ?>
             <tbody>
                 <?php
-                while ($row = $this->stmt->fetch(PDO::FETCH_ASSOC)) {
+                while ($row = $this->stmt->fetch(\PDO::FETCH_ASSOC)) {
                     echo '<tr><td>'.implode('</td><td>', $row).'</td></tr>';
                 }
                 ?>

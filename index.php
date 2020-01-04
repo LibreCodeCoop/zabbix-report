@@ -1,5 +1,7 @@
 <?php
 
+use ZabbixReport\Report;
+
 require_once 'vendor/autoload.php';
 
 if(file_exists('.env')) {
@@ -7,7 +9,6 @@ if(file_exists('.env')) {
     $dotenv->load();
 }
 
-require 'report.php';
 $report = new Report();
 
 if (isset($_POST['formato'])) {

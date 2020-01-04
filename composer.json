@@ -1,8 +1,15 @@
 {
+    "name": "lyseontech/zabbix-report",
+    "description": "Relatórios customizados para Zabbix",
+    "require": {
+        "doctrine/dbal": "^2.10"
+    },
     "require-dev": {
         "vlucas/phpdotenv": "^4.1"
     },
-    "require": {
-        "doctrine/dbal": "^2.10"
+    "autoload": {
+        "psr-4": {
+            "ZabbixReport\\": "src"
+        }
     }
 }
