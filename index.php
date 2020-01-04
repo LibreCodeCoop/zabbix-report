@@ -12,7 +12,6 @@ if(file_exists('.env')) {
 $report = new Report();
 
 if (isset($_POST['formato'])) {
-    $report->run();
     if ($_POST['formato'] == 'csv') {
         $report->view('csv');
         return;
@@ -36,12 +35,28 @@ if (isset($_POST['formato'])) {
   <form class="form-inline" method="POST">
   <div class="form-row align-items-center">
     <div class="col-auto align-self-end">
-      <label for="icmp">Nome do host</label>
-      <input type="text" name="host" value="<?php echo $_POST['host']; ?>" class="form-control" placeholder="Nome do host" maxlength="30" />
+      <label for="host">Nome do host</label>
+      <select class="custom-select mr-sm-2" id="host" name="host">
+        <option value selected>Selecione...</option>
+        <?php
+        foreach ($report->getAllHosts() as $host) {
+            echo '<option value="'.$host.'"'.($_POST['host'] == $host?' selected':'').'>'.$host.'</option>';
+        }
+        ?>
+      </select>
     </div>
     <div class="col-auto align-self-end">
-      <label for="icmp">Nome do item</label>
-      <input type="text" name="item" value="<?php echo $_POST['item']; ?>" class="form-control" placeholder="Nome do item" maxlength="30" />
+      <label for="item">Nome do item</label>
+      <select class="custom-select mr-sm-2" id="item" name="item">
+        <option value selected>Selecione...</option>
+        <?php
+        if (!empty($_POST['host'])) {
+            foreach ($report->getAllItemsByHost($_POST['host']) as $item) {
+                echo '<option value="'.$item.'"'.($_POST['item'] == $item?' selected':'').'>'.$item.'</option>';
+            }
+        }
+        ?>
+      </select>
     </div>
     <div class="col-auto align-self-end">
       <label for="data-inicio">Data início</label>
@@ -91,17 +106,28 @@ if (isset($_POST['formato'])) {
       <button type="submit" class="btn btn-primary" name="formato" value="html">Gerar relatório</button>
       <button type="submit" class="btn btn-primary" name="formato" value="csv">Baixar CSV</button>
     </div>
+  </div>
   </form>
 </div>
 <?php
-if (isset($_POST['formato']) && $_POST['formato'] == 'html') {
-  ?><div class="container-fluid p-3"><?php
-  $report->view('html');
-  ?></div><?php
+if ($_POST) {
+    ?><div class="container-fluid p-3"><?php
+    $report->view('html');
+    ?></div><?php
 }
 ?>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.bundle.min.js"></script>
+<script>
+$('#host').change(function(){
+  var form = $(this).closest('form');
+  $('<input />').attr('type', 'hidden')
+          .attr('name', "formato")
+          .attr('value', "html")
+          .appendTo(form);
+  form.trigger('submit');
+});
+</script>
 </body>
 </html>

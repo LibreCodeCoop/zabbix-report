@@ -29,7 +29,10 @@ class Report
         ]);
     }
 
-    public function getBaseQuery()
+    /**
+     * @return \Doctrine\DBAL\Query\QueryBuilder
+     */
+    public function getBaseQuery(): \Doctrine\DBAL\Query\QueryBuilder
     {
         $queryBuilder = $this->conn->createQueryBuilder();
         $queryBuilder
@@ -73,7 +76,36 @@ class Report
     public function getAllHosts()
     {
         $sql = 'SELECT host FROM ('.$this->getBaseQuery().') x GROUP BY host ORDER BY host';
-        return $this->conn->executeQuery($sql)->fetchColumn();
+        return $this->conn->executeQuery($sql)
+            ->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    public function getAllItemsByHost(string $host)
+    {
+        $value = '%'.substr(trim(strtolower($host)), 0, 30).'%';
+        $queryBuilder = $this->getBaseQuery();
+        $queryBuilder->select("TRIM(REGEXP_SUBSTR(start.name, 'onu_[0-9/: ]+')) AS onu")
+            ->where(
+                $queryBuilder->expr()->andX(
+                    $queryBuilder->expr()->orX(
+                        $queryBuilder->expr()->eq('start.severity', 5),
+                        $queryBuilder->expr()->eq('recovery.severity', 0)
+                    ),
+                    $queryBuilder->expr()->orX(
+                        $queryBuilder->expr()->like('LOWER(hosts.host)', '?'),
+                        $queryBuilder->expr()->like('LOWER(alert_start.message)', '?')
+                    )
+                )
+            )
+            ->groupBy('onu')
+            ->having(
+                $queryBuilder->expr()->andX(
+                    $queryBuilder->expr()->neq('onu', "''"),
+                    $queryBuilder->expr()->isNotNull('onu')
+                )
+            );
+        return $this->conn->executeQuery($queryBuilder, [$value, $value])
+            ->fetchAll(\PDO::FETCH_COLUMN);
     }
 
     public function getQuery()
@@ -109,32 +141,31 @@ class Report
                 {$this->getBaseQuery()}
             QUERY;
 
-        if (!empty($_POST['start-date'])) {
-            $value = \DateTime::createFromFormat('Y-m-d', $_POST['start-date']);
-            if ($value) {
-                if (!empty($_POST['start-time'])) {
-                    $startTime = \DateTime::createFromFormat('Y-m-d H:i', $_POST['start-date'] . ' ' . $_POST['start-time']);
-                } else {
-                    $startTime = $value;
-                }
-            }
-            if ($startTime && !empty($_POST['recovery-date'])) {
-                $value = \DateTime::createFromFormat('Y-m-d', $_POST['recovery-date']);
-                if ($value) {
-                    if (!empty($_POST['recovery-time'])) {
-                        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' ' . $_POST['recovery-time'].':59');
-                    } else {
-                        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' 23:59:59');
-                    }
-                }
-            }
-            if ($startTime && $recoveryTime) {
-                $sql.= "\n  AND start.clock >= ?";
-                $sql.= "\n  AND recovery.clock <= ?";
-                $params[] = $startTime->format('U');
-                $params[] = $recoveryTime->format('U');
+        $value = \DateTime::createFromFormat('Y-m-d', $_POST['start-date']);
+        if ($value) {
+            if (!empty($_POST['start-time'])) {
+                $startTime = \DateTime::createFromFormat('Y-m-d H:i', $_POST['start-date'] . ' ' . $_POST['start-time']);
+            } else {
+                $startTime = $value;
             }
         }
+        if ($startTime && !empty($_POST['recovery-date'])) {
+            $value = \DateTime::createFromFormat('Y-m-d', $_POST['recovery-date']);
+            if ($value) {
+                if (!empty($_POST['recovery-time'])) {
+                    $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' ' . $_POST['recovery-time'].':59');
+                } else {
+                    $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' 23:59:59');
+                }
+            }
+        }
+        if (!$startTime || !$recoveryTime) {
+            return;
+        }
+        $sql.= "\n  AND start.clock >= ?";
+        $sql.= "\n  AND recovery.clock <= ?";
+        $params[] = $startTime->format('U');
+        $params[] = $recoveryTime->format('U');
         array_unshift($params, $recoveryTime->format('U'), $startTime->format('U'));
         if (!empty($_POST['host'])) {
             $value = substr(trim(strtolower($_POST['host'])), 0, 30);
@@ -162,13 +193,13 @@ class Report
             QUERY;
         return ['sql' => $sql, 'params' => $params];
     }
-    public function run()
-    {
-        $toRun = $this->getQuery();
-        $this->stmt = $this->conn->executeQuery($toRun['sql'], $toRun['params']);
-    }
     public function view(string $format)
     {
+        $toRun = $this->getQuery();
+        if (!$toRun) {
+            return;
+        }
+        $this->stmt = $this->conn->executeQuery($toRun['sql'], $toRun['params']);
         switch ($format)
         {
             case 'csv':
