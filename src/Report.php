@@ -61,6 +61,10 @@ class Report
                         $queryBuilder->expr()->eq('recovery.severity', 0)
                     ),
                     $queryBuilder->expr()->orX(
+                        $queryBuilder->expr()->like('start.name', "'%ICMP%'"),
+                        $queryBuilder->expr()->comparison('LOWER(start.name)', 'REGEXP', "'onu_[0-9/: ]+'")
+                    ),
+                    $queryBuilder->expr()->orX(
                         $queryBuilder->expr()->andX(
                             $queryBuilder->expr()->isNotNull('hosts.host'),
                             $queryBuilder->expr()->neq('hosts.host', "''")
