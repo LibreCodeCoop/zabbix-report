@@ -145,10 +145,10 @@ class Report
                 {$this->getBaseQuery()}
             QUERY;
 
-        $value = \DateTime::createFromFormat('Y-m-d', $_POST['start-date']);
+        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['start-date']. ' 00:00:00');
         if ($value) {
             if (!empty($_POST['start-time'])) {
-                $startTime = \DateTime::createFromFormat('Y-m-d H:i', $_POST['start-date'] . ' ' . $_POST['start-time']);
+                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['start-date'] . ' ' . $_POST['start-time'].':00');
             } else {
                 $startTime = $value;
             }
