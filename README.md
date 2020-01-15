@@ -33,3 +33,12 @@ Execute o comando que segue na raiz do projeto:
 ```bash
 php -S localhost:8000
 ```
+
+## Geração de release
+
+Clone o projeto, execute `composer install` e rode o comando que segue para
+criar o pacote da nova release:
+
+```bash
+zip -r zabbix-report.zip composer.* .env index.php LICENSE README.md src/ vendor/
+```
