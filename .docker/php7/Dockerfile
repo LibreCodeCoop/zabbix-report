@@ -4,19 +4,28 @@ RUN apt-get update
 
 RUN apt-get install -y \
         git \
+        libicu-dev \
         libzip-dev \
         unzip \
+        && docker-php-ext-configure intl \
+        && docker-php-ext-install intl  \
         && docker-php-ext-configure mysqli -with-mysqli=mysqlnd \
         && docker-php-ext-configure pdo_mysql -with-pdo-mysql=mysqlnd \
+        && docker-php-ext-install opcache \
         && docker-php-ext-install pdo pdo_mysql mysqli \
         && docker-php-ext-install zip
 
+
 # Install xdebug
-RUN pecl install xdebug-2.8.0beta1 \
+RUN pecl install xdebug-2.9.1 \
     && docker-php-ext-enable xdebug
 
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 RUN composer --version
+
+RUN curl -sS https://get.symfony.com/cli/installer | bash && mv /root/.symfony/bin/symfony /usr/local/bin/symfony
+
+COPY config/php.ini /usr/local/etc/php/conf.d/
 
 WORKDIR /php7
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
