@@ -1,0 +1,13 @@
+<table class="table">
+<thead class="thead-dark">
+    <tr>
+    {% for key,value in rows.0 %}
+        <th scope="col">{{ key }}</th>
+    {% endfor %}
+    </tr>
+</thead>
+<tbody>
+    {% for row in rows %}
+        <tr><td>{{ row|join('</td><td>')|raw }}</td></tr>
+    {% endfor %}
+</tbody>

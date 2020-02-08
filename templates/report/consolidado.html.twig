@@ -1,0 +1,93 @@
+{% extends "base.html.twig" %}
+{% block body %}
+<div class="container-fluid p-3">
+  <form class="form-inline" method="POST">
+  <div class="form-row align-items-center">
+    <div class="col-auto align-self-end">
+      <label for="host">Nome do host</label>
+      <select class="custom-select mr-sm-2" id="host" name="host">
+        <option value selected>Selecione...</option>
+        {% for host in hosts %}
+            <option value="{{ host }}"{{ app.request.request.get('host') == host ? ' selected' : '' }}>{{ host }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto align-self-end">
+      <label for="item">Nome do item</label>
+      <select class="custom-select mr-sm-2" id="item" name="item">
+        <option value selected>Selecione...</option>
+        {% for item in items %}
+            <option value="{{ item.value }}"{{ item.selected ? ' selected' : '' }}>{{ item.value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto align-self-end">
+      <label for="data-inicio">Data início</label>
+      <input type="date" name="start-date" value="{{ app.request.request.get('start-date') }}" class="form-control" id="data-inicio" required>
+      <input type="time" name="start-time" value="{{ app.request.request.get('start-time') }}" class="form-control" />
+    </div>
+    <div class="col-auto align-self-end">
+      <label for="data-fim">Data fim</label>
+      <input type="date" name="recovery-date" value="{{ app.request.request.get('recovery-date') }}" class="form-control" id="data-fim" required>
+      <input type="time" name="recovery-time" value="{{ app.request.request.get('recovery-time') }}" class="form-control" />
+    </div>
+    <div class="col-auto align-self-end text-sm-center">
+      <label for="icmp-sim">ICMP</label>
+      <div class="form-check form-check-inline m-1">
+        <input class="form-check-input" type="radio" name="icmp" id="icmp-sim" value="1"
+            {% if app.request.request.get('icmp') == '' or app.request.request.get('icmp') == 1 %}
+                checked="checked"
+            {% endif %} />
+        <label class="form-check-label" for="icmp-sim">Sim</label>
+      </div>
+      <div class="form-check form-check-inline m-1">
+        <input class="form-check-input" type="radio" name="icmp" id="icmp-nao" value="0"
+            {% if app.request.request.get('icmp') != '' or app.request.request.get('icmp') == 0 %}
+                checked="checked"
+            {% endif %} />
+        <label class="form-check-label" for="icmp-nao">Não</label>
+      </div>
+    </div>
+    <div class="col-auto align-self-end text-sm-center">
+      <label for="separador">Separador CSV</label>
+      <div class="form-check form-check-inline m-1">
+        <input class="form-check-input" type="radio" name="separador" id="separador-ponto-e-virgula" value=";"
+            {% if app.request.request.get('separador') == '' or app.request.request.get('separador') == ';' %}
+                checked="checked"
+            {% endif %} />
+        <label class="form-check-label" for="separador-ponto-e-virgula">;</label>
+      </div>
+      <div class="form-check form-check-inline m-1">
+        <input class="form-check-input" type="radio" name="separador" id="separador-virgula" value=","
+            {% if app.request.request.get('separador') == ',' %}
+                checked="checked"
+            {% endif %} />
+        <label class="form-check-label" for="separador-virgula">,</label>
+      </div>
+    </div>
+    <div class="col-auto align-self-end">
+      <button type="submit" class="btn btn-primary" name="formato" value="html">Gerar relatório</button>
+      <button type="submit" class="btn btn-primary" name="formato" value="csv">Baixar CSV</button>
+    </div>
+  </div>
+  </form>
+</div>
+{% if viewHtml is defined %}
+    <div class="container-fluid p-3">
+        {{ viewHtml|raw }}
+    </div>
+{% endif %}
+{% endblock %}
+{% block javascripts %}
+{{ parent() }}
+<script>
+$('#host').change(function(){
+  var form = $(this).closest('form');
+  $('<input />').attr('type', 'hidden')
+          .attr('name', "formato")
+          .attr('value', "html")
+          .appendTo(form);
+  form.trigger('submit');
+});
+</script>
+{% endblock %}

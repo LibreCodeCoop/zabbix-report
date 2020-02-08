@@ -1,38 +1,56 @@
 <?php
+namespace App\Controller;
 
-namespace ZabbixReport;
+use App\Repository\ReportRepository;
+use Doctrine\DBAL\Driver\Connection;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
-class Report
+class ReportController extends AbstractController
 {
     /**
-     * @var \PDO
-     */
-    private $dbh;
-    /**
-     * DBAL Database connection
-     *
-     * @var \Doctrine\DBAL\Connection
+     * @var Connection
      */
     private $conn;
-    /**
-     * @var \Doctrine\DBAL\Driver\Statement
-     */
-    private $stmt;
-    public function __construct()
+    public function show(Connection $conn, Request $request, $slug)
     {
-        $this->conn = \Doctrine\DBAL\DriverManager::getConnection([
-            'dbname' => getenv('DB_NAME'),
-            'user' => getenv('DB_USER'),
-            'password' => getenv('DB_PASSWD'),
-            'host' => getenv('DB_HOST'),
-            'driver' => 'pdo_mysql',
-        ]);
+        $this->conn = $conn;
+        if (method_exists($this, $slug)) {
+            return $this->$slug($request);
+        } else {
+            throw $this->createNotFoundException('Relatório inexistente');
+        }
+    }
+
+    private function consolidado(Request $request)
+    {
+        if ($request->request->get('formato') == 'csv') {
+            return $this->view('csv', $request);
+        }
+        $sql = 'SELECT host FROM ('.$this->getBaseQuery($this->conn).') x GROUP BY host ORDER BY host';
+        $parameters['hosts'] = $this->conn->executeQuery($sql)
+            ->fetchAll(\PDO::FETCH_COLUMN);
+        $host = $request->request->get('host');
+        $parameters['items'] = [];
+        if ($host) {
+            foreach ($this->getAllItemsByHost($host) as $item) {
+                $parameters['items'][] = [
+                    'value' => $item,
+                    'selected' => $request->request->get('item') == $item
+                ];
+            }
+        }
+        if ($request->request->count()) {
+            $parameters['viewHtml'] = $this->view('html', $request);
+        }
+        return $this->render('report/consolidado.html.twig', $parameters);
     }
 
     /**
      * @return \Doctrine\DBAL\Query\QueryBuilder
      */
-    public function getBaseQuery(): \Doctrine\DBAL\Query\QueryBuilder
+    private function getBaseQuery(): \Doctrine\DBAL\Query\QueryBuilder
     {
         $queryBuilder = $this->conn->createQueryBuilder();
         $queryBuilder
@@ -77,12 +95,6 @@ class Report
         return $queryBuilder;
     }
 
-    public function getAllHosts()
-    {
-        $sql = 'SELECT host FROM ('.$this->getBaseQuery().') x GROUP BY host ORDER BY host';
-        return $this->conn->executeQuery($sql)
-            ->fetchAll(\PDO::FETCH_COLUMN);
-    }
 
     public function getAllItemsByHost(string $host)
     {
@@ -114,7 +126,7 @@ class Report
 
     public function getQuery()
     {
-        $decimalPlaces = getenv('DECIMAL_PLACES');
+        $decimalPlaces = $_ENV['DECIMAL_PLACES'];
         $sql = <<<QUERY
             SELECT host,
             QUERY;
@@ -197,7 +209,8 @@ class Report
             QUERY;
         return ['sql' => $sql, 'params' => $params];
     }
-    public function view(string $format)
+
+    public function view(string $format, Request $request)
     {
         $toRun = $this->getQuery();
         if (!$toRun) {
@@ -207,59 +220,46 @@ class Report
         switch ($format)
         {
             case 'csv':
-                $this->viewCsv();
+                return $this->viewCsv($request);
                 break;
             case 'html':
-                $this->viewHtml();
-                break;
+                return $this->viewHtml();
         }
     }
 
-    private function viewCsv()
+    private function viewCsv(Request $request)
     {
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename='.date('Ymd_His').'.csv');
-    
-        $out = fopen('php://output', 'w');
-    
-        $delimiter = $_POST['separador'] == ';' ? ';' : ',';
+        $response = new Response();
+        $response->headers->set('Content-type', 'text/csv');
+        $response->headers->set('Cache-Control', 'private');
+        // $response->headers->set('Content-length', $attachmentSize);
+        $response->headers->set('Content-Disposition', 'attachment; filename="' . date('Ymd_His') . '";');
+        $response->sendHeaders();
+
+        $out = fopen('php://memory', 'r+');
+
+        $delimiter = $request->request->get('separador') == ';' ? ';' : ',';
         $row = $this->stmt->fetch(\PDO::FETCH_ASSOC);
         fputcsv($out, array_keys($row), $delimiter);
         fputcsv($out, $row, $delimiter);
         while ($row = $this->stmt->fetch(\PDO::FETCH_ASSOC)) {
             fputcsv($out, $row, $delimiter);
         }
+        rewind($out);
+        $csvString = stream_get_contents($out);
+        fclose($out);
+
+        $response->setContent($csvString);
+        return $response;
     }
 
     private function viewHtml()
     {
-        $row = $this->stmt->fetch(\PDO::FETCH_ASSOC);
-        if (!$row) {
-            echo 'Sem resultados';
+        $data['rows'] = $this->stmt->fetchAll(\PDO::FETCH_ASSOC);
+        if (!$data['rows']) {
+            return 'Sem resultados';
         } else {
-            ?>
-            <table class="table">
-            <thead class="thead-dark">
-                <tr><?php
-                foreach (array_keys($row) as $key) {
-                    ?>
-                    <th scope="col"><?php echo $key; ?></th>
-                    <?php
-                }
-                ?>
-                </tr>
-            </thead>
-            <?php
-            echo '<tr><td>'.implode('</td><td>', $row).'</td></tr>';
-            ?>
-            <tbody>
-                <?php
-                while ($row = $this->stmt->fetch(\PDO::FETCH_ASSOC)) {
-                    echo '<tr><td>'.implode('</td><td>', $row).'</td></tr>';
-                }
-                ?>
-            </tbody>
-            <?php
+            return $this->renderView('report/tabela.html.twig', $data);
         }
     }
 }

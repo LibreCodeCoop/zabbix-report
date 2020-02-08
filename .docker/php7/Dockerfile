@@ -23,10 +23,8 @@ RUN pecl install xdebug-2.9.1 \
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 RUN composer --version
 
-RUN curl -sS https://get.symfony.com/cli/installer | bash && mv /root/.symfony/bin/symfony /usr/local/bin/symfony
-
 COPY config/php.ini /usr/local/etc/php/conf.d/
 
-WORKDIR /php7
+WORKDIR /app
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 ENTRYPOINT [ "sh", "/usr/local/bin/entrypoint.sh" ]
