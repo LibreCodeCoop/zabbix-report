@@ -50,9 +50,17 @@ class ReportController extends AbstractController
     /**
      * @return \Doctrine\DBAL\Query\QueryBuilder
      */
+    private function createQueryBuilder()
+    {
+        return $this->conn->createQueryBuilder();
+    }
+
+    /**
+     * @return \Doctrine\DBAL\Query\QueryBuilder
+     */
     private function getBaseQuery(): \Doctrine\DBAL\Query\QueryBuilder
     {
-        $queryBuilder = $this->conn->createQueryBuilder();
+        $queryBuilder = $this->createQueryBuilder();
         $queryBuilder
             ->select(
                 <<<QUERY
@@ -127,36 +135,31 @@ class ReportController extends AbstractController
     public function getQuery()
     {
         $decimalPlaces = $_ENV['DECIMAL_PLACES'];
-        $sql = <<<QUERY
-            SELECT host,
-            QUERY;
+        $q1 = $this->createQueryBuilder();
+        $q1->addSelect('host');
         if (!empty($_POST['item']) || empty($_POST['icmp']) || $_POST['icmp'] == 0) {
-            $sql.= "       onu AS item,\n";
+            $q1->addSelect('onu AS item');
         }
-        $sql.= <<<QUERY
-                CONCAT(
-                    CASE WHEN FLOOR(downtime / 3600) > 9 THEN FLOOR(downtime / 3600) ELSE LPAD(FLOOR(downtime / 3600), 2, 0) END,':',
-                    LPAD(FLOOR((downtime % 3600)/60), 2, 0), ':',
-                    LPAD(downtime % 60, 2, 0)
-                ) AS downtime,
-                ROUND((downtime * 100 ) / total_time, $decimalPlaces) AS percent_downtime,
-                CONCAT(
-                    CASE WHEN FLOOR((total_time - downtime) / 3600) > 9 THEN FLOOR((total_time - downtime) / 3600) ELSE LPAD(FLOOR((total_time - downtime) / 3600), 2, 0) END,':',
-                    LPAD(FLOOR(((total_time - downtime) % 3600)/60), 2, 0), ':',
-                    LPAD((total_time - downtime) % 60, 2, 0)
-                ) AS uptime,
-                ROUND(((total_time - downtime) * 100 ) / total_time, $decimalPlaces) AS percent_uptime
-            FROM (
-                    SELECT host,
-            QUERY;
-        $sql.= <<<QUERY
-                onu,
-                SUM(duration) AS downtime,
-                ? - ? AS total_time
-            FROM (
-                {$this->getBaseQuery()}
-            QUERY;
-
+        $q1->addSelect(
+            <<<SELECT
+            CONCAT(
+                CASE WHEN FLOOR(downtime / 3600) > 9 THEN FLOOR(downtime / 3600) ELSE LPAD(FLOOR(downtime / 3600), 2, 0) END,':',
+                LPAD(FLOOR((downtime % 3600)/60), 2, 0), ':',
+                LPAD(downtime % 60, 2, 0)
+            ) AS downtime
+            SELECT
+        );
+        $q1->addSelect("ROUND((downtime * 100 ) / total_time, $decimalPlaces) AS percent_downtime");
+        $q1->addSelect(
+            <<<SELECT
+            CONCAT(
+                CASE WHEN FLOOR((total_time - downtime) / 3600) > 9 THEN FLOOR((total_time - downtime) / 3600) ELSE LPAD(FLOOR((total_time - downtime) / 3600), 2, 0) END,':',
+                LPAD(FLOOR(((total_time - downtime) % 3600)/60), 2, 0), ':',
+                LPAD((total_time - downtime) % 60, 2, 0)
+            ) AS uptime
+            SELECT
+        );
+        $q1->addSelect("ROUND(((total_time - downtime) * 100 ) / total_time, $decimalPlaces) AS percent_uptime");
         $value = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['start-date']. ' 00:00:00');
         if ($value) {
             if (!empty($_POST['start-time'])) {
@@ -178,36 +181,45 @@ class ReportController extends AbstractController
         if (!$startTime || !$recoveryTime) {
             return;
         }
-        $sql.= "\n  AND start.clock >= ?";
-        $sql.= "\n  AND recovery.clock <= ?";
+
+        $q3 = $this->getBaseQuery();
+        $q3->andWhere($q3->expr()->gte('start.clock', '?'));
+        $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
         $params[] = $startTime->format('U');
         $params[] = $recoveryTime->format('U');
-        array_unshift($params, $recoveryTime->format('U'), $startTime->format('U'));
         if (!empty($_POST['host'])) {
             $value = substr(trim(strtolower($_POST['host'])), 0, 30);
-            $sql.= "\n  AND (LOWER(hosts.host) LIKE ? OR LOWER(alert_start.message) LIKE ?)";
+            $q3->andWhere(
+                $q3->expr()->orX(
+                    $q3->expr()->like('LOWER(hosts.host)', '?'),
+                    $q3->expr()->like('LOWER(alert_start.message)', '?')
+                )
+            );
             $params[] = '%' . $value . '%';
             $params[] = '%' . $value . '%';
         }
         if (!empty($_POST['item'])) {
             $value = substr(trim(strtolower($_POST['item'])), 0, 30);
-            $sql.= "\n  AND LOWER(start.name) LIKE ?";
+            $q3->andWhere($q3->expr()->like('LOWER(start.name)', '?'));
             $params[] = '%' . $value . '%';
         }
         if (!empty($_POST['icmp']) && $_POST['icmp'] == 1) {
-            $sql.= "\n  AND start.name LIKE '%ICMP%'";
-            $sql.= "\n  AND LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+'";
+            $q3->andWhere("start.name LIKE '%ICMP%'");
+            $q3->andWhere("LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+'");
         } else {
-            $sql.= "\n  AND start.name NOT LIKE '%ICMP%'";
-            $sql.= "\n  AND LOWER(start.name) REGEXP 'onu_[0-9/: ]+'";
+            $q3->andWhere("start.name NOT LIKE '%ICMP%'");
+            $q3->andWhere("LOWER(start.name) REGEXP 'onu_[0-9/: ]+'");
         }
-        $sql.= <<<QUERY
-                ) x
-            GROUP BY host, onu
-            ORDER BY host, onu
-            ) x2
-            QUERY;
-        return ['sql' => $sql, 'params' => $params];
+
+        $q2 = $this->createQueryBuilder();
+        $q2->select(['host', 'onu', 'SUM(duration) AS downtime', '? - ? AS total_time']);
+        array_unshift($params, $recoveryTime->format('U'), $startTime->format('U'));
+        $q2->from("($q3)", 'x');
+        $q2->groupBy(['host', 'onu']);
+        $q2->addOrderBy('host');
+        $q2->addOrderBy('onu');
+        $q1->from("($q2)", 'x2');
+        return ['sql' => $q1, 'params' => $params];
     }
 
     public function view(string $format, Request $request)
