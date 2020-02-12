@@ -44,12 +44,26 @@ class ReportController extends AbstractController
         $table = $dataTableFactory->create();
         $table->add('host', TextColumn::class, [
             'field' => 'host',
-            'label' => 'Host',
+            'label' => 'Host'
         ]);
-        $table->add('item', TextColumn::class, ['field' => 'item', 'label' => 'Item']);
-        $table->add('downtime', TextColumn::class, ['field' => 'downtime', 'label' => 'offline', 'orderable' => false]);
+        $table->add('item', TextColumn::class, [
+            'field' => 'item',
+            'label' => 'Item',
+            'className' => 'col-item'
+        ]);
+        $table->add('downtime', TextColumn::class, [
+            'field' => 'downtime',
+            'label' => 'offline',
+            'orderable' => false,
+            'className' => 'col-downtime'
+        ]);
         $table->add('percent_downtime', TextColumn::class, ['field' => 'percent_downtime', 'label' => '% offline']);
-        $table->add('uptime', TextColumn::class, ['field' => 'uptime', 'label' => 'online', 'orderable' => false]);
+        $table->add('uptime', TextColumn::class, [
+            'field' => 'uptime',
+            'label' => 'online',
+            'orderable' => false,
+            'className' => 'col-uptime'
+        ]);
         $table->add('percent_uptime', TextColumn::class, ['field' => 'percent_uptime', 'label' => '% online']);
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) {

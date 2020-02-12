@@ -108,11 +108,51 @@ $(document).ready( function () {
         }
       }
   });
+  toSeconds = function(time) {
+    var c = time.split(':');
+    var seconds = (+c[0]) * 60 * 60 + (+c[1]) * 60 + (+c[2]); 
+    return seconds;
+  }
+  fromSeconds = function(totalSeconds) {
+    hours = Math.floor(totalSeconds / 3600);
+    totalSeconds %= 3600;
+    minutes = Math.floor(totalSeconds / 60);
+    seconds = totalSeconds % 60;
+    return hours.toString().padStart(2, '0')+':'+minutes.toString().padStart(2, '0')+':'+seconds.toString().padStart(2, '0')
+  }
   $('#result').initDataTables({{ datatable_settings(datatable) }}, {
     drawCallback: function(settings) {
       if (dt.data().length) {
-        dt.column('item:name').visible(dt.data()[0].item.length)
+        dt.column('item:name').visible(dt.data()[0].item.length);
       }
+    },
+    fnFooterCallback: function (nRow, data, iStart, iEnd, aiDisplay) {
+      minus = data.length? 0 : 1;
+      if (this.find('tfoot').length) {
+        var tfoot = this.find('tfoot');
+      } else {
+        var tfoot = $('<tfoot>');
+        this.find('th').each(function(a,b) {
+          tfoot.append('<td class="'+b.getAttribute('class')+'"></td>')
+        });
+        tfoot.insertBefore($(this).find('tbody'));
+      }
+      $(tfoot).toggle(data.length>0);
+
+      totalDowntime = 0;
+      totalUptime = 0;
+      data.forEach(function(a){
+        totalDowntime += toSeconds(a.downtime)
+        totalUptime += toSeconds(a.uptime)
+      });
+
+      if (data.length && $('input[name=icmp]:checked').val() == 0) {
+        $(tfoot).find('td.col-item').show()
+      } else {
+        $(tfoot).find('td.col-item').hide()
+      }
+      $(tfoot).find('.col-downtime').html('<strong>'+fromSeconds(totalDowntime)+'</strong>')
+      $(tfoot).find('.col-uptime').html('<strong>'+fromSeconds(totalUptime)+'</strong>')
     }
   })
 });
