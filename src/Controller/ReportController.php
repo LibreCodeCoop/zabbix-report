@@ -51,6 +51,10 @@ class ReportController extends BaseController
             'label' => 'Item',
             'className' => 'col-item'
         ]);
+        $table->add('mindatahora', TextColumn::class, [
+            'field' => 'mindatahora',
+            'label' => '< data/hora',
+        ]);
         $table->add('downtime', TextColumn::class, [
             'field' => 'downtime',
             'label' => 'offline',
@@ -63,6 +67,10 @@ class ReportController extends BaseController
             'label' => 'online',
             'orderable' => false,
             'className' => 'col-uptime'
+        ]);
+        $table->add('maxdatahora', TextColumn::class, [
+            'field' => 'maxdatahora',
+            'label' => '> data/hora',
         ]);
         $table->add('percent_uptime', TextColumn::class, ['field' => 'percent_uptime', 'label' => '% online']);
         $table->createAdapter(DBALAdapter::class, [
@@ -250,6 +258,8 @@ class ReportController extends BaseController
             ) AS downtime
             SELECT
         );
+        $q1->addSelect("FROM_UNIXTIME(mindatahora, '%Y-%m-%d %H:%i:%s') AS mindatahora");
+        $q1->addSelect("FROM_UNIXTIME(maxdatahora, '%Y-%m-%d %H:%i:%s') AS maxdatahora");
         $q1->addSelect("ROUND((downtime * 100 ) / total_time, $decimalPlaces) AS percent_downtime");
         $q1->addSelect(
             <<<SELECT
@@ -265,6 +275,8 @@ class ReportController extends BaseController
         $q3 = $this->getBaseQuery();
         $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
         $q3->addSelect("recovery.clock - start.clock AS duration");
+        $q3->addSelect("start.clock AS start");
+        $q3->addSelect("recovery.clock AS recovery");
         $q3->andWhere($q3->expr()->gte('start.clock', '?'));
         $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
         $q1->setParameter(2, $startTime->format('U'));
@@ -294,7 +306,14 @@ class ReportController extends BaseController
         }
 
         $q2 = $this->createQueryBuilder();
-        $q2->select(['host', 'onu', 'SUM(duration) AS downtime', '? - ? AS total_time']);
+        $q2->select([
+            'host',
+            'onu',
+            'MIN(start) AS mindatahora',
+            'MAX(recovery) AS maxdatahora',
+            'SUM(duration) AS downtime',
+            '? - ? AS total_time'
+        ]);
         $q1->setParameter(0, $recoveryTime->format('U'));
         $q1->setParameter(1, $startTime->format('U'));
         $q2->from("($q3)", 'x');
