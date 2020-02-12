@@ -21,12 +21,12 @@
     <div class="col-auto align-self-end">
       <label for="data-inicio">Data início</label>
       <input type="date" name="downtime" value="{{ app.request.request.get('downtime') }}" class="form-control" id="data-inicio" required>
-      <input type="time" name="downtime-time" value="{{ app.request.request.get('downtime-time') }}" class="form-control" />
+      <input type="time" name="downtime-time" value="{{ app.request.request.get('downtime-time') }}" class="form-control" id="downtime-time" />
     </div>
     <div class="col-auto align-self-end">
       <label for="data-fim">Data fim</label>
       <input type="date" name="uptime" value="{{ app.request.request.get('uptime') }}" class="form-control" id="data-fim" required>
-      <input type="time" name="uptime-time" value="{{ app.request.request.get('uptime-time') }}" class="form-control" />
+      <input type="time" name="uptime-time" value="{{ app.request.request.get('uptime-time') }}" class="form-control" id="uptime-time" />
     </div>
     <div class="col-auto align-self-end text-sm-center">
       <label for="icmp-sim">ICMP</label>
@@ -99,8 +99,10 @@ $(document).ready( function () {
         e.preventDefault();
         dt.search( '' )
           dt.columns().search( '' )
-          dt.column('downtime:name').search('2019-09-01')
-          dt.column('uptime:name').search('2020-09-01')
+          time = $('#downtime-time').val() ? ' ' + $('#downtime-time').val() : '';
+          dt.column('downtime:name').search($('#data-inicio').val() + time)
+          time = $('#downtime-time').val() ? ' ' + $('#uptime-time').val() : '';
+          dt.column('uptime:name').search($('#data-fim').val() + time)
           dt.column('host:name').search($('#host').val())
           dt.column('item:name').search($('#item').val())
           dt.search('icmp='+$('input[name=icmp]:checked').val())

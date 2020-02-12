@@ -209,6 +209,12 @@ class ReportController extends BaseController
             foreach ($columns as $column) {
                 $cols[$column['name']] = $column['search']['value'];
             }
+            if (isset($cols['downtime'])) {
+                list($cols['downtime'], $cols['downtime-time']) = explode(' ', $cols['downtime']);
+            }
+            if (isset($cols['uptime'])) {
+                list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime']);
+            }
             if ($this->request->get('search')) {
                 parse_str($this->request->get('search')['value'], $body);
                 $cols = array_merge($cols, $body);
