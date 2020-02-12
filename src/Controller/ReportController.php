@@ -30,9 +30,62 @@ class ReportController extends BaseController
         }
     }
 
-    private function descritivo()
+    private function descritivo(Request $request, DataTableFactory $dataTableFactory)
     {
+        $this->request = $request->request;
+        if ($this->request->get('formato') == 'csv') {
+            return $this->viewCsv();
+        }
+        $table = $dataTableFactory->create();
+        $table->add('host', TextColumn::class, [
+            'field' => 'host',
+            'label' => 'Host'
+        ]);
+        $table->add('item', TextColumn::class, [
+            'field' => 'item',
+            'label' => 'Item',
+            'className' => 'col-item'
+        ]);
+        $table->add('downtime', TextColumn::class, [
+            'field' => 'start',
+            'label' => 'offline',
+            'className' => 'col-downtime'
+        ]);
+        $table->add('uptime', TextColumn::class, [
+            'field' => 'recovery',
+            'label' => 'online',
+            'className' => 'col-uptime'
+        ]);
+        $table->add('duration', TextColumn::class, [
+            'field' => 'duration',
+            'label' => 'Duração',
+        ]);
+        $table->createAdapter(DBALAdapter::class, [
+            'query' => function($state) {
+                return $this->getQueryDescritivo($state);
+            },
+            'connection' => $this->conn
+        ]);
+        $table->handleRequest($request);
+        if ($table->isCallback()) {
+            $content = $table->getResponse()->getContent();
+            $obj = json_decode($content);
+            if (!empty($obj->options)) {
+                foreach ($obj->options->columns as $key => $column) {
+                    $obj->options->columns[$key]->name = $column->data;
+                }
+            }
+            $response = JsonResponse::create($obj);
+            return $response;
+        }
+        $parameters['datatable'] = $table;
 
+        $parameters['tableFooter'] = false;
+
+        $sql = 'SELECT host FROM ('.$this->getBaseQuery($this->conn).') x GROUP BY host ORDER BY host';
+        $parameters['hosts'] = $this->conn->executeQuery($sql)
+            ->fetchAll(\PDO::FETCH_COLUMN);
+        return $this->render('report/consolidado.html.twig', $parameters);
     }
 
     private function consolidado(Request $request, DataTableFactory $dataTableFactory)
@@ -92,6 +145,8 @@ class ReportController extends BaseController
             return $response;
         }
         $parameters['datatable'] = $table;
+
+        $parameters['tableFooter'] = true;
 
         $sql = 'SELECT host FROM ('.$this->getBaseQuery($this->conn).') x GROUP BY host ORDER BY host';
         $parameters['hosts'] = $this->conn->executeQuery($sql)
@@ -203,6 +258,110 @@ class ReportController extends BaseController
         }
     }
 
+    public function getQueryDescritivo()
+    {
+        if ($columns = $this->request->get('columns')) {
+            foreach ($columns as $column) {
+                $cols[$column['name']] = $column['search']['value'];
+            }
+            if (isset($cols['downtime'])) {
+                list($cols['downtime'], $cols['downtime-time']) = explode(' ', $cols['downtime'] . ' ');
+            }
+            if (isset($cols['uptime'])) {
+                list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime'] . ' ');
+            }
+            if ($this->request->get('search')) {
+                parse_str($this->request->get('search')['value'], $body);
+                $cols = array_merge($cols, $body);
+            }
+        } elseif (!empty($this->request->get('downtime'))) {
+            $cols = $this->request->all();
+        }
+        if(!isset($cols) || !$this->getValue($cols, 'uptime') || !$this->getValue($cols, 'downtime')) {
+            return;
+        }
+
+        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime'). ' 00:00:00');
+        if ($value) {
+            if ($this->getValue($cols, 'downtime-time')) {
+                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime') . ' ' . $this->getValue($cols, 'downtime-time').':00');
+            } else {
+                $startTime = $value;
+            }
+        }
+        if (empty($startTime)) {
+            return;
+        }
+        $value = \DateTime::createFromFormat('Y-m-d', $this->getValue($cols, 'uptime'));
+        if ($value) {
+            if ($this->getValue($cols, 'uptime-time')) {
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' ' . $this->getValue($cols, 'uptime-time').':59');
+            } else {
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' 23:59:59');
+            }
+        }
+        if (empty($recoveryTime)) {
+            return;
+        }
+
+        $q1 = $this->createQueryBuilder();
+        $q1->addSelect('host');
+        if ($this->getValue($cols, 'item') || !$this->getValue($cols, 'icmp')) {
+            $q1->addSelect('onu AS item');
+        }
+        $q1->addSelect("FROM_UNIXTIME(start, '%Y-%m-%d %H:%i:%s') AS start");
+        $q1->addSelect("FROM_UNIXTIME(recovery, '%Y-%m-%d %H:%i:%s') AS recovery");
+        $q1->addSelect('duration');
+
+        $q3 = $this->getBaseQuery();
+        $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
+        $q3->addSelect("recovery.clock - start.clock AS duration");
+        $q3->addSelect("start.clock AS start");
+        $q3->addSelect("recovery.clock AS recovery");
+        $q3->andWhere($q3->expr()->gte('start.clock', '?'));
+        $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
+        $q1->setParameter(2, $startTime->format('U'));
+        $q1->setParameter(3, $recoveryTime->format('U'));
+        if ($this->getValue($cols, 'host')) {
+            $value = substr(trim(strtolower($this->getValue($cols, 'host'))), 0, 30);
+            $q3->andWhere(
+                $q3->expr()->orX(
+                    $q3->expr()->like('LOWER(hosts.host)', '?'),
+                    $q3->expr()->like('LOWER(alert_start.message)', '?')
+                )
+            );
+            $q1->setParameter(4, '%' . $value . '%');
+            $q1->setParameter(5, '%' . $value . '%');
+        }
+        if ($this->getValue($cols, 'item')) {
+            $value = substr(trim(strtolower($this->getValue($cols, 'item'))), 0, 30);
+            $q3->andWhere($q3->expr()->like('LOWER(start.name)', '?'));
+            $q1->setParameter(6, '%' . $value . '%');
+        }
+        if ($this->getValue($cols, 'icmp') == 1) {
+            $q3->andWhere("start.name LIKE '%ICMP%'");
+            $q3->andWhere("LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+'");
+        } else {
+            $q3->andWhere("start.name NOT LIKE '%ICMP%'");
+            $q3->andWhere("LOWER(start.name) REGEXP 'onu_[0-9/: ]+'");
+        }
+
+        $q2 = $this->createQueryBuilder();
+        $q2->select([
+            'host',
+            'onu',
+            'start',
+            'recovery',
+            'duration'
+        ]);
+        $q2->from("($q3)", 'x');
+        $q2->addOrderBy('host');
+        $q2->addOrderBy('onu');
+        $q1->from("($q2)", 'x2');
+        $q1->setParameters(array_values($q1->getParameters()));
+        return $q1;
+    }
+
     public function getQuery()
     {
         if ($columns = $this->request->get('columns')) {
@@ -210,10 +369,10 @@ class ReportController extends BaseController
                 $cols[$column['name']] = $column['search']['value'];
             }
             if (isset($cols['downtime'])) {
-                list($cols['downtime'], $cols['downtime-time']) = explode(' ', $cols['downtime']);
+                list($cols['downtime'], $cols['downtime-time']) = explode(' ', $cols['downtime'] . ' ');
             }
             if (isset($cols['uptime'])) {
-                list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime']);
+                list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime'] . ' ');
             }
             if ($this->request->get('search')) {
                 parse_str($this->request->get('search')['value'], $body);
