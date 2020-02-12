@@ -1,50 +1,91 @@
 <?php
 namespace App\Controller;
 
-use App\Repository\ReportRepository;
-use Doctrine\DBAL\Driver\Connection;
+use App\Adapter\DBALAdapter;
+use Doctrine\DBAL\Connection;
+use Omines\DataTablesBundle\Column\TextColumn;
+use Omines\DataTablesBundle\DataTableFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class ReportController extends AbstractController
 {
     /**
+     * @var Request
+     */
+    private $request;
+    /**
      * @var Connection
      */
     private $conn;
-    public function show(Connection $conn, Request $request, $slug)
+    public function show(Connection $conn, Request $request, DataTableFactory $dataTableFactory, $slug)
     {
         $this->conn = $conn;
         if (method_exists($this, $slug)) {
-            return $this->$slug($request);
+            return $this->$slug($request, $dataTableFactory);
         } else {
             throw $this->createNotFoundException('Relatório inexistente');
         }
     }
 
-    private function consolidado(Request $request)
+    private function descritivo()
     {
-        if ($request->request->get('formato') == 'csv') {
-            return $this->view('csv', $request);
+
+    }
+
+    private function consolidado(Request $request, DataTableFactory $dataTableFactory)
+    {
+        $this->request = $request->request;
+        if ($this->request->get('formato') == 'csv') {
+            return $this->viewCsv();
         }
+        $table = $dataTableFactory->create();
+        $table->add('host', TextColumn::class, [
+            'field' => 'host',
+            'label' => 'Host',
+        ]);
+        $table->add('item', TextColumn::class, ['field' => 'item', 'label' => 'Item']);
+        $table->add('downtime', TextColumn::class, ['field' => 'downtime', 'label' => 'offline', 'orderable' => false]);
+        $table->add('percent_downtime', TextColumn::class, ['field' => 'percent_downtime', 'label' => '% offline']);
+        $table->add('uptime', TextColumn::class, ['field' => 'uptime', 'label' => 'online', 'orderable' => false]);
+        $table->add('percent_uptime', TextColumn::class, ['field' => 'percent_uptime', 'label' => '% online']);
+        $table->createAdapter(DBALAdapter::class, [
+            'query' => function($state) {
+                return $this->getQuery($state);
+            },
+            'connection' => $this->conn
+        ]);
+        $table->handleRequest($request);
+        if ($table->isCallback()) {
+            $content = $table->getResponse()->getContent();
+            $obj = json_decode($content);
+            if (!empty($obj->options)) {
+                foreach ($obj->options->columns as $key => $column) {
+                    $obj->options->columns[$key]->name = $column->data;
+                }
+            }
+            $response = JsonResponse::create($obj);
+            return $response;
+        }
+        $parameters['datatable'] = $table;
+
         $sql = 'SELECT host FROM ('.$this->getBaseQuery($this->conn).') x GROUP BY host ORDER BY host';
         $parameters['hosts'] = $this->conn->executeQuery($sql)
             ->fetchAll(\PDO::FETCH_COLUMN);
-        $host = $request->request->get('host');
-        $parameters['items'] = [];
-        if ($host) {
-            foreach ($this->getAllItemsByHost($host) as $item) {
-                $parameters['items'][] = [
-                    'value' => $item,
-                    'selected' => $request->request->get('item') == $item
-                ];
-            }
-        }
-        if ($request->request->count()) {
-            $parameters['viewHtml'] = $this->view('html', $request);
-        }
         return $this->render('report/consolidado.html.twig', $parameters);
+    }
+
+    public function itemAjax(Connection $conn, Request $request)
+    {
+        $this->conn = $conn;
+        $host = $request->get('host');
+        $items = [];
+        if ($host) {
+            $items = $this->getAllItemsByHost($host);
+        }
+        return JsonResponse::create($items);
     }
 
     /**
@@ -132,12 +173,60 @@ class ReportController extends AbstractController
             ->fetchAll(\PDO::FETCH_COLUMN);
     }
 
+    private function getValue($columns, $key)
+    {
+        if (isset($columns[$key]['search'])) {
+            return $columns[$key]['search'];
+        }
+        if (isset($columns[$key])) {
+            return $columns[$key];
+        }
+    }
+
     public function getQuery()
     {
+        if ($columns = $this->request->get('columns')) {
+            foreach ($columns as $column) {
+                $cols[$column['name']] = $column['search']['value'];
+            }
+            if ($this->request->get('search')) {
+                parse_str($this->request->get('search')['value'], $body);
+                $cols = array_merge($cols, $body);
+            }
+        } elseif (!empty($this->request->get('downtime'))) {
+            $cols = $this->request->all();
+        }
+        if(!isset($cols) || !$this->getValue($cols, 'uptime') || !$this->getValue($cols, 'downtime')) {
+            return;
+        }
+
+        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime'). ' 00:00:00');
+        if ($value) {
+            if ($this->getValue($cols, 'downtime-time')) {
+                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime') . ' ' . $this->getValue($cols, 'downtime-time').':00');
+            } else {
+                $startTime = $value;
+            }
+        }
+        if (empty($startTime)) {
+            return;
+        }
+        $value = \DateTime::createFromFormat('Y-m-d', $this->getValue($cols, 'uptime'));
+        if ($value) {
+            if ($this->getValue($cols, 'uptime-time')) {
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' ' . $this->getValue($cols, 'uptime-time').':59');
+            } else {
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' 23:59:59');
+            }
+        }
+        if (empty($recoveryTime)) {
+            return;
+        }
+
         $decimalPlaces = $_ENV['DECIMAL_PLACES'];
         $q1 = $this->createQueryBuilder();
         $q1->addSelect('host');
-        if (!empty($_POST['item']) || empty($_POST['icmp']) || $_POST['icmp'] == 0) {
+        if ($this->getValue($cols, 'item') || !$this->getValue($cols, 'icmp')) {
             $q1->addSelect('onu AS item');
         }
         $q1->addSelect(
@@ -160,50 +249,29 @@ class ReportController extends AbstractController
             SELECT
         );
         $q1->addSelect("ROUND(((total_time - downtime) * 100 ) / total_time, $decimalPlaces) AS percent_uptime");
-        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['start-date']. ' 00:00:00');
-        if ($value) {
-            if (!empty($_POST['start-time'])) {
-                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['start-date'] . ' ' . $_POST['start-time'].':00');
-            } else {
-                $startTime = $value;
-            }
-        }
-        if ($startTime && !empty($_POST['recovery-date'])) {
-            $value = \DateTime::createFromFormat('Y-m-d', $_POST['recovery-date']);
-            if ($value) {
-                if (!empty($_POST['recovery-time'])) {
-                    $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' ' . $_POST['recovery-time'].':59');
-                } else {
-                    $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $_POST['recovery-date'] . ' 23:59:59');
-                }
-            }
-        }
-        if (!$startTime || !$recoveryTime) {
-            return;
-        }
 
         $q3 = $this->getBaseQuery();
         $q3->andWhere($q3->expr()->gte('start.clock', '?'));
         $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
-        $params[] = $startTime->format('U');
-        $params[] = $recoveryTime->format('U');
-        if (!empty($_POST['host'])) {
-            $value = substr(trim(strtolower($_POST['host'])), 0, 30);
+        $q1->setParameter(2, $startTime->format('U'));
+        $q1->setParameter(3, $recoveryTime->format('U'));
+        if ($this->getValue($cols, 'host')) {
+            $value = substr(trim(strtolower($this->getValue($cols, 'host'))), 0, 30);
             $q3->andWhere(
                 $q3->expr()->orX(
                     $q3->expr()->like('LOWER(hosts.host)', '?'),
                     $q3->expr()->like('LOWER(alert_start.message)', '?')
                 )
             );
-            $params[] = '%' . $value . '%';
-            $params[] = '%' . $value . '%';
+            $q1->setParameter(4, '%' . $value . '%');
+            $q1->setParameter(5, '%' . $value . '%');
         }
-        if (!empty($_POST['item'])) {
-            $value = substr(trim(strtolower($_POST['item'])), 0, 30);
+        if ($this->getValue($cols, 'item')) {
+            $value = substr(trim(strtolower($this->getValue($cols, 'item'))), 0, 30);
             $q3->andWhere($q3->expr()->like('LOWER(start.name)', '?'));
-            $params[] = '%' . $value . '%';
+            $q1->setParameter(6, '%' . $value . '%');
         }
-        if (!empty($_POST['icmp']) && $_POST['icmp'] == 1) {
+        if ($this->getValue($cols, 'icmp') == 1) {
             $q3->andWhere("start.name LIKE '%ICMP%'");
             $q3->andWhere("LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+'");
         } else {
@@ -213,49 +281,41 @@ class ReportController extends AbstractController
 
         $q2 = $this->createQueryBuilder();
         $q2->select(['host', 'onu', 'SUM(duration) AS downtime', '? - ? AS total_time']);
-        array_unshift($params, $recoveryTime->format('U'), $startTime->format('U'));
+        $q1->setParameter(0, $recoveryTime->format('U'));
+        $q1->setParameter(1, $startTime->format('U'));
         $q2->from("($q3)", 'x');
         $q2->groupBy(['host', 'onu']);
         $q2->addOrderBy('host');
         $q2->addOrderBy('onu');
         $q1->from("($q2)", 'x2');
-        return ['sql' => $q1, 'params' => $params];
+        return $q1;
     }
 
-    public function view(string $format, Request $request)
+    private function viewCsv()
     {
-        $toRun = $this->getQuery();
-        if (!$toRun) {
+        $qb = $this->getQuery();
+        if (!$qb) {
             return;
         }
-        $this->stmt = $this->conn->executeQuery($toRun['sql'], $toRun['params']);
-        switch ($format)
-        {
-            case 'csv':
-                return $this->viewCsv($request);
-                break;
-            case 'html':
-                return $this->viewHtml();
-        }
-    }
 
-    private function viewCsv(Request $request)
-    {
         $response = new Response();
         $response->headers->set('Content-type', 'text/csv');
         $response->headers->set('Cache-Control', 'private');
         // $response->headers->set('Content-length', $attachmentSize);
-        $response->headers->set('Content-Disposition', 'attachment; filename="' . date('Ymd_His') . '";');
+        $response->headers->set('Content-Disposition', 'attachment; filename="' . date('Ymd_His') . '.csv";');
         $response->sendHeaders();
 
         $out = fopen('php://memory', 'r+');
 
-        $delimiter = $request->request->get('separador') == ';' ? ';' : ',';
-        $row = $this->stmt->fetch(\PDO::FETCH_ASSOC);
-        fputcsv($out, array_keys($row), $delimiter);
-        fputcsv($out, $row, $delimiter);
-        while ($row = $this->stmt->fetch(\PDO::FETCH_ASSOC)) {
+        $delimiter = $this->request->get('separador') == ';' ? ';' : ',';
+        $stmt = $this->conn->executeQuery($qb, $qb->getParameters());
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($row) {
+            fputcsv($out, array_keys($row), $delimiter);
             fputcsv($out, $row, $delimiter);
+            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                fputcsv($out, $row, $delimiter);
+            }
         }
         rewind($out);
         $csvString = stream_get_contents($out);
@@ -263,15 +323,5 @@ class ReportController extends AbstractController
 
         $response->setContent($csvString);
         return $response;
-    }
-
-    private function viewHtml()
-    {
-        $data['rows'] = $this->stmt->fetchAll(\PDO::FETCH_ASSOC);
-        if (!$data['rows']) {
-            return 'Sem resultados';
-        } else {
-            return $this->renderView('report/tabela.html.twig', $data);
-        }
     }
 }

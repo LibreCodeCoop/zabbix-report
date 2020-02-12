@@ -1,7 +1,7 @@
 {% extends "base.html.twig" %}
 {% block body %}
 <div class="container-fluid p-3">
-  <form class="form-inline" method="POST">
+  <form class="form-inline" method="POST" id="filter">
   <div class="form-row align-items-center">
     <div class="col-auto align-self-end">
       <label for="host">Nome do host</label>
@@ -16,20 +16,17 @@
       <label for="item">Nome do item</label>
       <select class="custom-select mr-sm-2" id="item" name="item">
         <option value selected>Selecione...</option>
-        {% for item in items %}
-            <option value="{{ item.value }}"{{ item.selected ? ' selected' : '' }}>{{ item.value }}</option>
-        {% endfor %}
       </select>
     </div>
     <div class="col-auto align-self-end">
       <label for="data-inicio">Data início</label>
-      <input type="date" name="start-date" value="{{ app.request.request.get('start-date') }}" class="form-control" id="data-inicio" required>
-      <input type="time" name="start-time" value="{{ app.request.request.get('start-time') }}" class="form-control" />
+      <input type="date" name="downtime" value="{{ app.request.request.get('downtime') }}" class="form-control" id="data-inicio" required>
+      <input type="time" name="downtime-time" value="{{ app.request.request.get('downtime-time') }}" class="form-control" />
     </div>
     <div class="col-auto align-self-end">
       <label for="data-fim">Data fim</label>
-      <input type="date" name="recovery-date" value="{{ app.request.request.get('recovery-date') }}" class="form-control" id="data-fim" required>
-      <input type="time" name="recovery-time" value="{{ app.request.request.get('recovery-time') }}" class="form-control" />
+      <input type="date" name="uptime" value="{{ app.request.request.get('uptime') }}" class="form-control" id="data-fim" required>
+      <input type="time" name="uptime-time" value="{{ app.request.request.get('uptime-time') }}" class="form-control" />
     </div>
     <div class="col-auto align-self-end text-sm-center">
       <label for="icmp-sim">ICMP</label>
@@ -72,6 +69,9 @@
   </div>
   </form>
 </div>
+{% if datatable is defined %}
+<div id="result"></div>
+{% endif %}
 {% if viewHtml is defined %}
     <div class="container-fluid p-3">
         {{ viewHtml|raw }}
@@ -80,14 +80,42 @@
 {% endblock %}
 {% block javascripts %}
 {{ parent() }}
+{% if datatable is defined %}
+<script src="{{ asset('bundles/datatables/js/datatables.js') }}"></script>
 <script>
-$('#host').change(function(){
-  var form = $(this).closest('form');
-  $('<input />').attr('type', 'hidden')
-          .attr('name', "formato")
-          .attr('value', "html")
-          .appendTo(form);
-  form.trigger('submit');
+$(document).ready( function () {
+  $('#host').change(function(){
+    $.getJSON("{{ path('report_list_item') }}",{host: $(this).val(), ajax: 'true'}, function(j){
+      var options = '<option value selected>Selecione...</option>';
+      for (var i = 0; i < j.length; i++) {
+        options += '<option value="' + j[i] + '">' + j[i] + '</option>';
+      }
+      $("#item").html(options);
+    })
+  });
+  $('#filter').submit(function(e) {
+    if (this.checkValidity()) {
+      if ($("button[type=submit]:focus").val() == 'html') {
+        e.preventDefault();
+        dt.search( '' )
+          dt.columns().search( '' )
+          dt.column('downtime:name').search('2019-09-01')
+          dt.column('uptime:name').search('2020-09-01')
+          dt.column('host:name').search($('#host').val())
+          dt.column('item:name').search($('#item').val())
+          dt.search('icmp='+$('input[name=icmp]:checked').val())
+          dt.clear().draw()
+        }
+      }
+  });
+  $('#result').initDataTables({{ datatable_settings(datatable) }}, {
+    drawCallback: function(settings) {
+      if (dt.data().length) {
+        dt.column('item:name').visible(dt.data()[0].item.length)
+      }
+    }
+  })
 });
 </script>
+{% endif %}
 {% endblock %}
