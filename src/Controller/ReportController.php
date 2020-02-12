@@ -109,9 +109,7 @@ class ReportController extends AbstractController
                             WHEN alert_start.message LIKE '%Host:%' THEN TRIM(TRAILING '\\r' FROM TRIM(TRAILING '\\n' FROM REPLACE(REGEXP_SUBSTR(alert_start.message, 'Host:.*\\n'), 'Host: ', '')))
                             WHEN alert_start.message LIKE '%<b>%' THEN REPLACE(REPLACE(REGEXP_SUBSTR(alert_start.message, '<b>.*</b>'), '<b> ', ''), ' </b>', '')
                         END AS host
-                QUERY,
-                "TRIM(REGEXP_SUBSTR(start.name, 'onu_[0-9/: ]+')) AS onu",
-                "recovery.clock - start.clock AS duration"
+                QUERY
             )
             ->from('events', 'start')
             ->leftJoin('start', 'event_recovery', 'er', 'er.eventid = start.eventid')
@@ -251,6 +249,8 @@ class ReportController extends AbstractController
         $q1->addSelect("ROUND(((total_time - downtime) * 100 ) / total_time, $decimalPlaces) AS percent_uptime");
 
         $q3 = $this->getBaseQuery();
+        $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
+        $q3->addSelect("recovery.clock - start.clock AS duration");
         $q3->andWhere($q3->expr()->gte('start.clock', '?'));
         $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
         $q1->setParameter(2, $startTime->format('U'));
