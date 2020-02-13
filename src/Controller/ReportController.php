@@ -486,7 +486,9 @@ class ReportController extends BaseController
         $q2->addOrderBy('host');
         $q2->addOrderBy('onu');
         $q1->from("($q2)", 'x2');
-        $q1->setParameters(array_values($q1->getParameters()));
+        $parameters = $q1->getParameters();
+        ksort($parameters);
+        $q1->setParameters($parameters);
         return $q1;
     }
 
