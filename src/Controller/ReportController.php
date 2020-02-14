@@ -81,9 +81,10 @@ class ReportController extends BaseController
 
         $parameters['tableFooter'] = false;
 
-        $sql = 'SELECT host FROM ('.$this->getBaseQuery($this->conn).') x GROUP BY host ORDER BY host';
-        $parameters['hosts'] = $this->conn->executeQuery($sql)
-            ->fetchAll(\PDO::FETCH_COLUMN);
+        $q = $this->getBaseQuery()
+            ->groupBy('host')
+            ->orderBy('host');
+        $parameters['hosts'] = $q->execute()->fetchAll(\PDO::FETCH_COLUMN);
         return $this->render('report/consolidado.html.twig', $parameters);
     }
 
@@ -147,9 +148,10 @@ class ReportController extends BaseController
 
         $parameters['tableFooter'] = true;
 
-        $sql = 'SELECT host FROM ('.$this->getBaseQuery($this->conn).') x GROUP BY host ORDER BY host';
-        $parameters['hosts'] = $this->conn->executeQuery($sql)
-            ->fetchAll(\PDO::FETCH_COLUMN);
+        $q = $this->getBaseQuery()
+            ->groupBy('host')
+            ->orderBy('host');
+        $parameters['hosts'] = $q->execute()->fetchAll(\PDO::FETCH_COLUMN);
         return $this->render('report/consolidado.html.twig', $parameters);
     }
 
