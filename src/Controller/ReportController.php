@@ -62,8 +62,7 @@ class ReportController extends BaseController
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) {
                 return $this->getQueryDescritivo($state);
-            },
-            'connection' => $this->conn
+            }
         ]);
         $table->handleRequest($request);
         if ($table->isCallback()) {
@@ -129,8 +128,7 @@ class ReportController extends BaseController
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) {
                 return $this->getQuery($state);
-            },
-            'connection' => $this->conn
+            }
         ]);
         $table->handleRequest($request);
         if ($table->isCallback()) {
@@ -319,25 +317,24 @@ class ReportController extends BaseController
         $q3->addSelect("recovery.clock - start.clock AS duration");
         $q3->addSelect("start.clock AS start");
         $q3->addSelect("recovery.clock AS recovery");
-        $q3->andWhere($q3->expr()->gte('start.clock', '?'));
-        $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
-        $q1->setParameter(2, $startTime->format('U'));
-        $q1->setParameter(3, $recoveryTime->format('U'));
+        $q3->andWhere($q3->expr()->gte('start.clock', ':startTime'));
+        $q3->andWhere($q3->expr()->lte('recovery.clock', ':recoveryTime'));
+        $q1->setParameter('startTime', $startTime->format('U'));
+        $q1->setParameter('recoveryTime', $recoveryTime->format('U'));
         if ($this->getValue($cols, 'host')) {
             $value = substr(trim(strtolower($this->getValue($cols, 'host'))), 0, 30);
             $q3->andWhere(
                 $q3->expr()->orX(
-                    $q3->expr()->like('LOWER(hosts.host)', '?'),
-                    $q3->expr()->like('LOWER(alert_start.message)', '?')
+                    $q3->expr()->like('LOWER(hosts.host)', ':host'),
+                    $q3->expr()->like('LOWER(alert_start.message)', ':host')
                 )
             );
-            $q1->setParameter(4, '%' . $value . '%');
-            $q1->setParameter(5, '%' . $value . '%');
+            $q1->setParameter('host', '%' . $value . '%');
         }
         if ($this->getValue($cols, 'item')) {
             $value = substr(trim(strtolower($this->getValue($cols, 'item'))), 0, 30);
-            $q3->andWhere($q3->expr()->like('LOWER(start.name)', '?'));
-            $q1->setParameter(6, '%' . $value . '%');
+            $q3->andWhere($q3->expr()->like('LOWER(start.name)', ':startName'));
+            $q1->setParameter('startName', '%' . $value . '%');
         }
         if ($this->getValue($cols, 'icmp') == 1) {
             $q3->andWhere("start.name LIKE '%ICMP%'");
@@ -355,11 +352,13 @@ class ReportController extends BaseController
             'recovery',
             'duration'
         ]);
+        foreach ($q3->getParameters() as $parameter => $value) {
+            $q1->setParameter($parameter, $value, $q3->getParameterType($parameter));
+        }
         $q2->from("($q3)", 'x');
         $q2->addOrderBy('host');
         $q2->addOrderBy('onu');
         $q1->from("($q2)", 'x2');
-        $q1->setParameters(array_values($q1->getParameters()));
         return $q1;
     }
 
@@ -443,25 +442,24 @@ class ReportController extends BaseController
         $q3->addSelect("recovery.clock - start.clock AS duration");
         $q3->addSelect("start.clock AS start");
         $q3->addSelect("recovery.clock AS recovery");
-        $q3->andWhere($q3->expr()->gte('start.clock', '?'));
-        $q3->andWhere($q3->expr()->lte('recovery.clock', '?'));
-        $q1->setParameter(2, $startTime->format('U'));
-        $q1->setParameter(3, $recoveryTime->format('U'));
+        $q3->andWhere($q3->expr()->gte('start.clock', ':startTime'));
+        $q3->andWhere($q3->expr()->lte('recovery.clock', ':recoveryTime'));
+        $q1->setParameter('startTime', $startTime->format('U'));
+        $q1->setParameter('recoveryTime', $recoveryTime->format('U'));
         if ($this->getValue($cols, 'host')) {
             $value = substr(trim(strtolower($this->getValue($cols, 'host'))), 0, 30);
             $q3->andWhere(
                 $q3->expr()->orX(
-                    $q3->expr()->like('LOWER(hosts.host)', '?'),
-                    $q3->expr()->like('LOWER(alert_start.message)', '?')
+                    $q3->expr()->like('LOWER(hosts.host)', ':host'),
+                    $q3->expr()->like('LOWER(alert_start.message)', ':host')
                 )
             );
-            $q1->setParameter(4, '%' . $value . '%');
-            $q1->setParameter(5, '%' . $value . '%');
+            $q1->setParameter('host', '%' . $value . '%');
         }
         if ($this->getValue($cols, 'item')) {
             $value = substr(trim(strtolower($this->getValue($cols, 'item'))), 0, 30);
-            $q3->andWhere($q3->expr()->like('LOWER(start.name)', '?'));
-            $q1->setParameter(6, '%' . $value . '%');
+            $q3->andWhere($q3->expr()->like('LOWER(start.name)', ':startName'));
+            $q1->setParameter('startName', '%' . $value . '%');
         }
         if ($this->getValue($cols, 'icmp') == 1) {
             $q3->andWhere("start.name LIKE '%ICMP%'");
@@ -478,18 +476,16 @@ class ReportController extends BaseController
             'MIN(start) AS mindatahora',
             'MAX(recovery) AS maxdatahora',
             'SUM(duration) AS downtime',
-            '? - ? AS total_time'
+            ':recoveryTime - :startTime AS total_time'
         ]);
-        $q1->setParameter(0, $recoveryTime->format('U'));
-        $q1->setParameter(1, $startTime->format('U'));
+        foreach ($q3->getParameters() as $parameter => $value) {
+            $q1->setParameter($parameter, $value, $q3->getParameterType($parameter));
+        }
         $q2->from("($q3)", 'x');
         $q2->groupBy(['host', 'onu']);
         $q2->addOrderBy('host');
         $q2->addOrderBy('onu');
         $q1->from("($q2)", 'x2');
-        $parameters = $q1->getParameters();
-        ksort($parameters);
-        $q1->setParameters($parameters);
         return $q1;
     }
 
@@ -510,7 +506,7 @@ class ReportController extends BaseController
         $out = fopen('php://memory', 'r+');
 
         $delimiter = $this->request->get('separador') == ';' ? ';' : ',';
-        $stmt = $this->conn->executeQuery($qb, $qb->getParameters());
+        $stmt = $qb->execute();
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         if ($row) {
             fputcsv($out, array_keys($row), $delimiter);

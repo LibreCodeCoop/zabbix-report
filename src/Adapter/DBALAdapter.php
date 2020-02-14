@@ -11,10 +11,6 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 class DBALAdapter extends AbstractAdapter
 {
     /**
-     * @var \Doctrine\DBAL\Connection
-     */
-    private $connection;
-    /**
      * @var Closure
      */
     private $queryBuilderCallback;
@@ -27,7 +23,6 @@ class DBALAdapter extends AbstractAdapter
         $this->configureOptions($resolver);
         $options = $resolver->resolve($options);
 
-        $this->connection = $options['connection'];
         $this->queryBuilderCallback = $options['query'];
     }
 
@@ -62,7 +57,7 @@ class DBALAdapter extends AbstractAdapter
         $qb = clone $queryBuilder;
 
         $qb->select('count(1)');
-        $stmt = $this->connection->executeQuery($qb, $qb->getParameters());
+        $stmt = $qb->execute();
         return (int) $stmt->fetch(\PDO::FETCH_COLUMN);
     }
 
@@ -96,7 +91,7 @@ class DBALAdapter extends AbstractAdapter
                 ->setMaxResults($state->getLength())
             ;
         }
-        $stmt = $this->connection->executeQuery($builder, $builder->getParameters());
+        $stmt = $builder->execute();
         while ($row = $stmt->fetch(\PDO::FETCH_OBJ)) {
             yield $row;
         }
@@ -105,7 +100,6 @@ class DBALAdapter extends AbstractAdapter
     protected function configureOptions(OptionsResolver $resolver)
     {
         $resolver
-            ->setRequired('query')
-            ->setRequired('connection');
+            ->setRequired('query');
     }
 }
