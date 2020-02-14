@@ -190,13 +190,13 @@ class ReportController extends BaseController
                 QUERY
             )
             ->from('events', 'start')
-            ->leftJoin('start', 'event_recovery', 'er', 'er.eventid = start.eventid')
-            ->leftJoin('er', 'events', 'recovery', 'recovery.eventid = er.r_eventid')
-            ->leftJoin('start', 'alerts', 'alert_start', 'alert_start.eventid = start.eventid AND alert_start.mediatypeid = 5')
-            ->leftJoin('start', 'triggers', 'triggers', 'start.objectid = triggers.triggerid')
-            ->leftJoin('triggers', 'functions', 'functions', 'functions.triggerid = triggers.triggerid')
-            ->leftJoin('functions', 'items', 'items', 'items.itemid = functions.itemid')
-            ->leftJoin('items', 'hosts', 'hosts', 'items.hostid = hosts.hostid')
+            ->join('start',         'event_recovery', 'er',          'er.eventid = start.eventid')
+            ->join('er',            'events',         'recovery',    'recovery.eventid = er.r_eventid')
+            ->leftJoin('start',     'alerts',         'alert_start', 'alert_start.eventid = start.eventid AND alert_start.mediatypeid = 5')
+            ->leftJoin('start',     'triggers',       'triggers',    'start.objectid = triggers.triggerid')
+            ->leftJoin('triggers',  'functions',      'functions',   'functions.triggerid = triggers.triggerid')
+            ->leftJoin('functions', 'items',          'items',       'items.itemid = functions.itemid')
+            ->leftJoin('items',     'hosts',          'hosts',       'items.hostid = hosts.hostid')
             ->where(
                 $queryBuilder->expr()->andX(
                     $queryBuilder->expr()->orX(
