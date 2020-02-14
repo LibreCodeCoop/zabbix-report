@@ -310,7 +310,15 @@ class ReportController extends BaseController
         }
         $q1->addSelect("FROM_UNIXTIME(start, '%Y-%m-%d %H:%i:%s') AS start");
         $q1->addSelect("FROM_UNIXTIME(recovery, '%Y-%m-%d %H:%i:%s') AS recovery");
-        $q1->addSelect('duration');
+        $q1->addSelect(
+            <<<SELECT
+            CONCAT(
+                CASE WHEN FLOOR(duration / 3600) > 9 THEN FLOOR(duration / 3600) ELSE LPAD(FLOOR(duration / 3600), 2, 0) END,':',
+                LPAD(FLOOR((duration % 3600)/60), 2, 0), ':',
+                LPAD(duration % 60, 2, 0)
+            ) AS duration
+            SELECT
+        );
 
         $q3 = $this->getBaseQuery();
         $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
@@ -350,7 +358,7 @@ class ReportController extends BaseController
             'onu',
             'start',
             'recovery',
-            'duration'
+            'CAST(recovery - start AS UNSIGNED) AS duration'
         ]);
         foreach ($q3->getParameters() as $parameter => $value) {
             $q1->setParameter($parameter, $value, $q3->getParameterType($parameter));
@@ -439,7 +447,7 @@ class ReportController extends BaseController
 
         $q3 = $this->getBaseQuery();
         $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
-        $q3->addSelect("recovery.clock - start.clock AS duration");
+        $q3->addSelect("CAST(recovery.clock - start.clock AS UNSIGNED) AS duration");
         $q3->addSelect("start.clock AS start");
         $q3->addSelect("recovery.clock AS recovery");
         $q3->andWhere($q3->expr()->gte('start.clock', ':startTime'));
