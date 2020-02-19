@@ -61,7 +61,7 @@ class ZabbixReportRepository
         }
 
         $decimalPlaces = $_ENV['DECIMAL_PLACES'];
-        $q1 = $this->createQueryBuilder();;
+        $q1 = $this->createQueryBuilder();
         $q1->addSelect('host');
         if ($this->getValue($cols, 'item') || !$this->getValue($cols, 'icmp')) {
             $q1->addSelect('onu AS item');
