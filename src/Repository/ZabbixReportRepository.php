@@ -392,7 +392,9 @@ class ZabbixReportRepository
 
     public function getAllHosts()
     {
-        return $this->getBaseQuery()
+        return $this->createQueryBuilder()
+            ->select('host')
+            ->from($_ENV['DB_NAME_SUMMARY'].'.base')
             ->groupBy('host')
             ->orderBy('host')
             ->execute()
