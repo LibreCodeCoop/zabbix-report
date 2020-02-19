@@ -8,15 +8,10 @@ class ZabbixReportRepository
 {
     private $conn;
     private $filter;
-    /**
-     * @var string
-     */
-    private $reportDbName;
     public function __construct(array $params)
     {
         $this->conn = $params['conn'];
         $this->filter = isset($params['filter'])?$params['filter']:null;
-        $this->reportDbName = isset($params['reportDbName'])?$params['reportDbName']:null;
     }
 
     public function getQueryConsolidado()
@@ -435,7 +430,7 @@ class ZabbixReportRepository
     public function saveDailyReport($row)
     {
         $insert = <<<QUERY
-            INSERT INTO {$this->reportDbName}.base
+            INSERT INTO {$_ENV['DB_NAME_SUMMARY']}.base
             (eventid, host, icmp, name, multidate, start_date, start_time, recovery_date, recovery_time, weekday)
             VALUES
             (:eventid, :host, :icmp, :name, :multidate, :start_date, :start_time, :recovery_date, :recovery_time, :weekday)

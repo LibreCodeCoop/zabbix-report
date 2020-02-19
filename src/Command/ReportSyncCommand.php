@@ -76,8 +76,7 @@ class ReportSyncCommand extends DoctrineCommand
 
         DoctrineCommandHelper::setApplicationConnection($this->getApplication(), $input->getOption('connection'));
         $conn = $this->getHelper('db')->getConnection();
-        $reportDbName = $this->getDoctrineConnection('report')->getParams()['dbname'];
-        $report = new ZabbixReportRepository(['conn' => $conn, 'reportDbName' => $reportDbName]);
+        $report = new ZabbixReportRepository(['conn' => $conn]);
 
         $progressBar = new ProgressBar($output, count($dates));
         $progressBar->start();
