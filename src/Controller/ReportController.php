@@ -27,7 +27,7 @@ class ReportController extends BaseController
     {
         $this->conn = $conn;
         if (method_exists($this, $slug)) {
-            $this->report = new ZabbixReportRepository($this->conn, $request);
+            $this->report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $request]);
             return $this->$slug($request, $dataTableFactory);
         } else {
             throw $this->createNotFoundException('Relatório inexistente');
@@ -66,7 +66,7 @@ class ReportController extends BaseController
         ]);
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) use($request) {
-                $report = new ZabbixReportRepository($this->conn, $request);
+                $report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $request]);
                 return $report->getQueryDescritivo();
             }
         ]);
@@ -130,7 +130,7 @@ class ReportController extends BaseController
         $table->add('percent_uptime', TextColumn::class, ['field' => 'percent_uptime', 'label' => '% online']);
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) use($request) {
-                $report = new ZabbixReportRepository($this->conn, $request);
+                $report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $request]);
                 return $report->getQueryConsolidado();
             }
         ]);
@@ -156,7 +156,7 @@ class ReportController extends BaseController
 
     public function itemAjax(Connection $conn, Request $request)
     {
-        $report = new ZabbixReportRepository($conn, $request);
+        $report = new ZabbixReportRepository(['conn' => $conn, 'filter' => $request]);
         $host = $request->get('host');
         $items = [];
         if ($host) {

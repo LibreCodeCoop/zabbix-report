@@ -4,16 +4,16 @@ namespace App\Repository;
 class ZabbixReportRepository
 {
     private $conn;
-    private $request;
+    private $filter;
     public function __construct($conn, $request)
     {
-        $this->conn = $conn;
-        $this->request = $request;
+        $this->conn = $params['conn'];
+        $this->filter = isset($params['filter'])?$params['filter']:null;
     }
 
     public function getQueryConsolidado()
     {
-        if ($columns = $this->request->get('columns')) {
+        if ($columns = $this->filter->get('columns')) {
             foreach ($columns as $column) {
                 $cols[$column['name']] = $column['search']['value'];
             }
@@ -23,12 +23,12 @@ class ZabbixReportRepository
             if (isset($cols['uptime'])) {
                 list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime'] . ' ');
             }
-            if ($this->request->get('search')) {
-                parse_str($this->request->get('search')['value'], $body);
+            if ($this->filter->get('search')) {
+                parse_str($this->filter->get('search')['value'], $body);
                 $cols = array_merge($cols, $body);
             }
-        } elseif (!empty($this->request->get('downtime'))) {
-            $cols = $this->request->all();
+        } elseif (!empty($this->filter->get('downtime'))) {
+            $cols = $this->filter->all();
         }
         if(!isset($cols) || !$this->getValue($cols, 'uptime') || !$this->getValue($cols, 'downtime')) {
             return;
@@ -118,7 +118,7 @@ class ZabbixReportRepository
             $q3->andWhere("LOWER(start.name) REGEXP 'onu_[0-9/: ]+'");
         }
 
-        $q2 = $this->createQueryBuilder();;
+        $q2 = $this->createQueryBuilder();
         $q2->select([
             'host',
             'onu',
@@ -140,7 +140,7 @@ class ZabbixReportRepository
 
     public function getQueryDescritivo()
     {
-        if ($columns = $this->request->get('columns')) {
+        if ($columns = $this->filter->get('columns')) {
             foreach ($columns as $column) {
                 $cols[$column['name']] = $column['search']['value'];
             }
@@ -150,12 +150,12 @@ class ZabbixReportRepository
             if (isset($cols['uptime'])) {
                 list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime'] . ' ');
             }
-            if ($this->request->get('search')) {
-                parse_str($this->request->get('search')['value'], $body);
+            if ($this->filter->get('search')) {
+                parse_str($this->filter->get('search')['value'], $body);
                 $cols = array_merge($cols, $body);
             }
-        } elseif (!empty($this->request->get('downtime'))) {
-            $cols = $this->request->all();
+        } elseif (!empty($this->filter->get('downtime'))) {
+            $cols = $this->filter->all();
         }
         if(!isset($cols) || !$this->getValue($cols, 'uptime') || !$this->getValue($cols, 'downtime')) {
             return;
