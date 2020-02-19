@@ -1,14 +1,22 @@
 <?php
 namespace App\Repository;
 
+use Exception;
+use PDO;
+
 class ZabbixReportRepository
 {
     private $conn;
     private $filter;
-    public function __construct($conn, $request)
+    /**
+     * @var string
+     */
+    private $reportDbName;
+    public function __construct(array $params)
     {
         $this->conn = $params['conn'];
         $this->filter = isset($params['filter'])?$params['filter']:null;
+        $this->reportDbName = isset($params['reportDbName'])?$params['reportDbName']:null;
     }
 
     public function getQueryConsolidado()
@@ -297,6 +305,78 @@ class ZabbixReportRepository
         return $queryBuilder;
     }
 
+    public function getBaseReportQuery($filter)
+    {
+        $cols = $filter->all();
+        $q = $this->createQueryBuilder();
+        $q
+            ->addSelect("start.eventid")
+            ->addSelect(
+                <<<QUERY
+                CASE WHEN hosts.host IS NOT NULL THEN hosts.host
+                    WHEN alert_start.message LIKE '%Host:%' THEN TRIM(TRAILING '\\r' FROM TRIM(TRAILING '\\n' FROM REPLACE(REGEXP_SUBSTR(alert_start.message, 'Host:.*\\n'), 'Host: ', '')))
+                    WHEN alert_start.message LIKE '%<b>%' THEN REPLACE(REPLACE(REGEXP_SUBSTR(alert_start.message, '<b>.*</b>'), '<b> ', ''), ' </b>', '')
+                END AS host
+                QUERY
+            )
+            ->addSelect(
+                <<<QUERY
+                CASE WHEN start.name LIKE '%ICMP%' OR LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+' THEN 1
+                     ELSE 0
+                END as icmp
+                QUERY
+            )
+            ->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS name")
+            ->addSelect("FROM_UNIXTIME(start.clock, '%Y-%m-%d') AS start_date")
+            ->addSelect("FROM_UNIXTIME(start.clock, '%Y-%m-%d %H:%i:%s') AS start_time")
+            ->addSelect("FROM_UNIXTIME(recovery.clock, '%Y-%m-%d') AS recovery_date")
+            ->addSelect("FROM_UNIXTIME(recovery.clock, '%Y-%m-%d %H:%i:%s') AS recovery_time")
+            ->addSelect("FROM_UNIXTIME(start.clock,'%w') AS weekday")
+            ->from('events',        'start')
+            ->leftJoin('start',         'event_recovery', 'er',          'er.eventid = start.eventid')
+            ->leftJoin('er',            'events',         'recovery',    'recovery.eventid = er.r_eventid')
+            ->leftJoin('start',     'alerts',         'alert_start', 'alert_start.eventid = start.eventid AND alert_start.mediatypeid = 5')
+            ->leftJoin('start',     'triggers',       'triggers',    'start.objectid = triggers.triggerid')
+            ->leftJoin('triggers',  'functions',      'functions',   'functions.triggerid = triggers.triggerid')
+            ->leftJoin('functions', 'items',          'items',       'items.itemid = functions.itemid')
+            ->leftJoin('items',     'hosts',          'hosts',       'items.hostid = hosts.hostid')
+            ->where(
+                $q->expr()->andX(
+                    $q->expr()->orX(
+                        $q->expr()->eq('start.severity', 5),
+                        $q->expr()->eq('recovery.severity', 0)
+                    ),
+                    $q->expr()->orX(
+                        $q->expr()->like('start.name', "'%ICMP%'"),
+                        $q->expr()->comparison('LOWER(start.name)', 'REGEXP', "'onu_[0-9/: ]+'")
+                    ),
+                    $q->expr()->orX(
+                        $q->expr()->andX(
+                            $q->expr()->isNotNull('hosts.host'),
+                            $q->expr()->neq('hosts.host', "''")
+                        ),
+                        $q->expr()->like('alert_start.message', "'%Host:%'"),
+                        $q->expr()->like('alert_start.message', "'%<b>%'")
+                    ),
+                    $q->expr()->orX(
+                        $q->expr()->andX(
+                            $q->expr()->gte('start.clock', ':startTime'),
+                            $q->expr()->lte('recovery.clock', ':recoveryTime'),
+                        ),
+                        $q->expr()->andX(
+                            $q->expr()->isNull('recovery.clock'),
+                            $q->expr()->lte('start.clock', ':recoveryTime')
+                        )
+                    )
+                )
+            );
+        $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime'));
+        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime'));
+        $q->setParameter('startTime', $startTime->format('U'));
+        $q->setParameter('recoveryTime', $recoveryTime->format('U'));
+        return $q;
+    }
+
     private function getValue($columns, $key)
     {
         if (isset($columns[$key]['search'])) {
@@ -350,5 +430,24 @@ class ZabbixReportRepository
         $q->setParameter('host', '%'.substr(trim(strtolower($host)), 0, 30).'%');
         return $q->execute()
             ->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    public function saveDailyReport($row)
+    {
+        $insert = <<<QUERY
+            INSERT INTO {$this->reportDbName}.base
+            (eventid, host, icmp, name, multidate, start_date, start_time, recovery_date, recovery_time, weekday)
+            VALUES
+            (:eventid, :host, :icmp, :name, :multidate, :start_date, :start_time, :recovery_date, :recovery_time, :weekday)
+            QUERY;
+        $conn = $this->conn->getWrappedConnection();
+        try {
+            $stmt = $conn->prepare($insert);
+            foreach ($row as $key => $value) {
+                $row[':'.$key] = $value;
+                unset($row[$key]);
+            }
+            $stmt->execute($row);
+        } catch (Exception $e) { }
     }
 }
