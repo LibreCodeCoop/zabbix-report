@@ -39,20 +39,20 @@ class ReportSyncCommand extends DoctrineCommand
             }
             $dates[] = [
                 'sart' => $date,
-                'end' => \DateTime::createFromFormat('Y-m-d H:i:s', $date->format('Y-m-d') . ' 23:59:59')
+                'end' => \DateTime::createFromFormat('Y-m-d H:i:s', $date->format('Y-m-d') . ' 00:00:00')
             ];
         } elseif($startDate) {
             $startDate = \DateTime::createFromFormat('Y-m-d H:i:s', $startDate . ' 00:00:00');
             $endDate = $input->getOption('end-date');
             if ($endDate) {
-                $endDate = \DateTime::createFromFormat('Y-m-d H:i:s', $endDate . ' 23:59:59');
+                $endDate = \DateTime::createFromFormat('Y-m-d H:i:s', $endDate . ' 24:00:00');
                 if (!$endDate) {
                     throw new LogicException('Data fim inválida');
                 }
             } else {
-                $endDate = \DateTime::createFromFormat('Y-m-d', date('Y-m-d'));
+                $endDate = \DateTime::createFromFormat('Y-m-d H:i:s', date('Y-m-d') . ' 00:00:00');
             }
-            while ($startDate->format('Y-m-d') <= $endDate->format('Y-m-d')) {
+            while ($startDate->format('Y-m-d') < $endDate->format('Y-m-d')) {
                 $dates[] = [
                     'start' => clone $startDate,
                     'end' => $endDate
@@ -64,7 +64,7 @@ class ReportSyncCommand extends DoctrineCommand
             $date = $date->sub(new \DateInterval('P1D'));
             $dates[] = [
                 'start' => $date,
-                'end' => \DateTime::createFromFormat('Y-m-d H:i:s', $date->format('Y-m-d') . ' 23:59:59')
+                'end' => \DateTime::createFromFormat('Y-m-d H:i:s', $date->format('Y-m-d') . ' 24:00:00')
             ];
         }
         return $dates;
@@ -83,30 +83,30 @@ class ReportSyncCommand extends DoctrineCommand
         $filter = new ParameterBag();
         foreach ($dates as $range) {
             $filter->set('downtime', $range['start']->format('Y-m-d 00:00:00'));
-            $filter->set('uptime', $range['start']->format('Y-m-d 23:59:59'));
+            $filter->set('uptime', (clone $range['start'])->add(new \DateInterval('P1D'))->format('Y-m-d H:i:s'));
             $stmt = $report->getBaseReportQuery($filter)->execute();
             while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 $start = \DateTime::createFromFormat('Y-m-d H:i:s', $row['start_time']);
                 $recovery = \DateTime::createFromFormat('Y-m-d H:i:s', $row['recovery_time']);
                 $row['multidate'] = !$recovery || $start->format('Y-m-d') < $recovery->format('Y-m-d') ? 1 : 0;
                 if (!$recovery) {
-                    $recovery = \DateTime::createFromFormat('Y-m-d H:i:s', $row['start_date'] . ' 23:59:59');
+                    $recovery = clone $range['end'];
                 }
                 do {
-                    if ($recovery->format('Y-m-d') == $start->format('Y-m-d')) {
+                    $endCurrentDay = (clone $start)->add(new \DateInterval('P1D'))->setTime(0,0,0);
+                    if ($endCurrentDay->format('Y-m-d') >= $recovery->format('Y-m-d')) {
                         $row['recovery_date'] = $recovery->format('Y-m-d');
                         $row['recovery_time'] = $recovery->format('Y-m-d H:i:s');
                     } else {
-                        $row['recovery_date'] = $start->format('Y-m-d');
-                        $row['recovery_time'] = $start->format('Y-m-d 23:59:59');
+                        $row['recovery_date'] = $endCurrentDay->format('Y-m-d');
+                        $row['recovery_time'] = $endCurrentDay->format('Y-m-d H:i:s');
                     }
                     $report->saveDailyReport($row);
-                    $start->add(new \DateInterval('P1D'));
-                    $start = \DateTime::createFromFormat('Y-m-d H:i:s', $start->format('Y-m-d 00:00:00'));
+                    $start->add(new \DateInterval('P1D'))->setTime(0,0,0);
                     $row['start_date'] = $start->format('Y-m-d');
                     $row['start_time'] = $start->format('Y-m-d H:i:s');
                     $row['weekday'] = $start->format('w');
-                } while ($row['multidate'] && $start <= $range['end']);
+                } while ($row['multidate'] && $start < $recovery);
             }
             $progressBar->advance();
         }
