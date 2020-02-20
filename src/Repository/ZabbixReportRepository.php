@@ -403,28 +403,20 @@ class ZabbixReportRepository
 
     public function getAllItemsByHost(string $host): array
     {
-        $q = $this->getBaseQuery();
-        $q->select("TRIM(REGEXP_SUBSTR(start.name, 'onu_[0-9/: ]+')) AS onu")
+        $q = $this->createQueryBuilder();
+        $q->select("TRIM(REGEXP_SUBSTR(name, 'onu_[0-9/: ]+')) AS onu")
+            ->from($_ENV['DB_NAME_SUMMARY'].'.base')
             ->where(
-                $q->expr()->andX(
-                    $q->expr()->orX(
-                        $q->expr()->eq('start.severity', 5),
-                        $q->expr()->eq('recovery.severity', 0)
-                    ),
-                    $q->expr()->orX(
-                        $q->expr()->like('LOWER(hosts.host)', ':host'),
-                        $q->expr()->like('LOWER(alert_start.message)', ':host')
-                    )
-                )
+                $q->expr()->eq('host', ':host')
             )
-            ->groupBy('onu')
+            ->groupBy('name')
             ->having(
                 $q->expr()->andX(
                     $q->expr()->neq('onu', "''"),
                     $q->expr()->isNotNull('onu')
                 )
             );
-        $q->setParameter('host', '%'.substr(trim(strtolower($host)), 0, 30).'%');
+        $q->setParameter('host', $host);
         return $q->execute()
             ->fetchAll(\PDO::FETCH_COLUMN);
     }
