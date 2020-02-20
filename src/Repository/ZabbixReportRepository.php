@@ -186,7 +186,7 @@ class ZabbixReportRepository
             if ($this->getValue('uptime-time')) {
                 $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('uptime') . ' ' . $this->getValue('uptime-time').':59');
             } else {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'))->add(new \DateInterval('P1D'));
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'))->add(new \DateInterval('P1D'))->setTime(0,0,0);
             }
         }
         if (empty($recoveryTime)) {
