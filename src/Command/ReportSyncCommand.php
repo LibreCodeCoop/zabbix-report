@@ -82,32 +82,35 @@ class ReportSyncCommand extends Command
         $progressBar->start();
         $filter = new ParameterBag();
         foreach ($dates as $range) {
-            $filter->set('downtime', $range['start']->format('Y-m-d 00:00:00'));
-            $filter->set('uptime', (clone $range['start'])->add(new \DateInterval('P1D'))->format('Y-m-d H:i:s'));
+            $filter->set('downtime', $range['start']->format('Y-m-d'));
+            $filter->set('uptime', (clone $range['start'])->add(new \DateInterval('P1D'))->format('Y-m-d'));
             $stmt = $report->getBaseReportQuery($filter)->execute();
             while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-                $start = \DateTime::createFromFormat('Y-m-d H:i:s', $row['start_time']);
-                $recovery = \DateTime::createFromFormat('Y-m-d H:i:s', $row['recovery_time']);
-                $row['multidate'] = !$recovery || $start->format('Y-m-d') < $recovery->format('Y-m-d') ? 1 : 0;
+                $start = \DateTime::createFromFormat('Y-m-d H:i:s', $row['start_datetime']);
+                $recovery = \DateTime::createFromFormat('Y-m-d H:i:s', $row['recovery_datetime']);
+                $row['multidate'] = ( !$recovery || $start->format('Y-m-d') < $recovery->format('Y-m-d') ) ? 1 : 0;
                 if (!$recovery) {
                     $recovery = clone $range['end'];
                 }
                 do {
+                    $row['start_date'] = $start->format('Y-m-d');
+                    $row['start_datetime'] = $start->format('Y-m-d H:i:s');
+                    $row['start_time'] = $start->format('H:i:s');
+                    $row['weekday'] = $start->format('w');
                     $endCurrentDay = (clone $start)->add(new \DateInterval('P1D'))->setTime(0,0,0);
-                    if ($endCurrentDay->format('Y-m-d') >= $recovery->format('Y-m-d')) {
+                    if ($endCurrentDay->format('Y-m-d') > $recovery->format('Y-m-d')) {
                         $row['recovery_date'] = $recovery->format('Y-m-d');
-                        $row['recovery_time'] = $recovery->format('Y-m-d H:i:s');
+                        $row['recovery_datetime'] = $recovery->format('Y-m-d H:i:s');
+                        $row['recovery_time'] = $recovery->format('H:i:s');
                         $row['duration'] = $recovery->getTimestamp() - $start->getTimestamp();
                     } else {
                         $row['recovery_date'] = $endCurrentDay->format('Y-m-d');
-                        $row['recovery_time'] = $endCurrentDay->format('Y-m-d H:i:s');
+                        $row['recovery_datetime'] = $endCurrentDay->format('Y-m-d H:i:s');
+                        $row['recovery_time'] = $endCurrentDay->format('H:i:s');
                         $row['duration'] = $endCurrentDay->getTimestamp() - $start->getTimestamp();
                     }
                     $report->saveDailyReport($row);
                     $start->add(new \DateInterval('P1D'))->setTime(0,0,0);
-                    $row['start_date'] = $start->format('Y-m-d');
-                    $row['start_time'] = $start->format('Y-m-d H:i:s');
-                    $row['weekday'] = $start->format('w');
                 } while ($row['multidate'] && $start < $recovery);
             }
             $progressBar->advance();

@@ -2,7 +2,6 @@
 namespace App\Repository;
 
 use Exception;
-use PDO;
 use Symfony\Component\Yaml\Yaml;
 
 class ZabbixReportRepository
@@ -29,13 +28,13 @@ class ZabbixReportRepository
                 ->addGroupBy('name');
         }
         $q->addSelect('host')
-            ->addSelect('MIN(start_time) AS mindatahora')
-            ->addSelect('MAX(recovery_time) AS maxdatahora')
+            ->addSelect('MIN(start_datetime) AS mindatahora')
+            ->addSelect('MAX(recovery_datetime) AS maxdatahora')
             ->addSelect('SUM(duration) AS duration')
             ->addSelect('TO_SECONDS(:recoveryTime) - TO_SECONDS(:startTime) AS total_time')
             ->from($_ENV['DB_NAME_SUMMARY'] . '.base')
-            ->andWhere($q->expr()->gte('start_time', ':startTime'))
-            ->andWhere($q->expr()->lte('recovery_time', ':recoveryTime'))
+            ->andWhere($q->expr()->gte('start_datetime', ':startTime'))
+            ->andWhere($q->expr()->lte('recovery_datetime', ':recoveryTime'))
             ->setParameter('startTime', $startTime->format('Y-m-d H:i:s'))
             ->setParameter('recoveryTime', $recoveryTime->format('Y-m-d H:i:s'))
             ->andWhere($q->expr()->eq('icmp', ':icmp'))
@@ -120,8 +119,20 @@ class ZabbixReportRepository
             $q->addSelect('name AS item');
         }
         $q->addSelect('host')
-            ->addSelect('start_time AS start')
-            ->addSelect('recovery_time AS recovery')
+            ->addSelect(
+                <<<SELECT
+                CASE WHEN start_time > :endNotWorkTime THEN start_datetime
+                    ELSE CONCAT(start_date, ' ', :endNotWorkTime)
+                    END AS start
+                SELECT
+            )
+            ->addSelect(
+                <<<SELECT
+                CASE WHEN recovery_time > :startNotWorkTime OR recovery_time = '00:00:00' THEN CONCAT(start_date, ' ', :startNotWorkTime)
+                    ELSE recovery_datetime
+                    END AS recovery
+                SELECT
+            )
             ->addSelect(
                 <<<SELECT
                 CONCAT(
@@ -132,8 +143,8 @@ class ZabbixReportRepository
                 SELECT
             )
             ->from($_ENV['DB_NAME_SUMMARY'] . '.base')
-            ->andWhere($q->expr()->gte('start_time', ':startTime'))
-            ->andWhere($q->expr()->lte('recovery_time', ':recoveryTime'))
+            ->andWhere($q->expr()->gte('start_datetime', ':startTime'))
+            ->andWhere($q->expr()->lte('recovery_datetime', ':recoveryTime'))
             ->setParameter('startTime', $startTime->format('Y-m-d H:i:s'))
             ->setParameter('recoveryTime', $recoveryTime->format('Y-m-d H:i:s'))
             ->andWhere($q->expr()->eq('icmp', ':icmp'))
@@ -141,7 +152,21 @@ class ZabbixReportRepository
             ->andWhere($q->expr()->notIn('weekday',':weekDays'))
             ->setParameter('weekDays', $this->config['weekday'], \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
             ->andWhere($q->expr()->notIn('start_date', ':notWorkDay'))
-            ->setParameter('notWorkDay', $this->config['notWorkDay'], \Doctrine\DBAL\Connection::PARAM_STR_ARRAY);
+            ->setParameter('notWorkDay', $this->config['notWorkDay'], \Doctrine\DBAL\Connection::PARAM_STR_ARRAY)
+            ->andWhere(
+                $q->expr()->orX(
+                    $q->expr()->andX(
+                        $q->expr()->gte('start_time', ':endNotWorkTime'),
+                        $q->expr()->lte('start_time', ':startNotWorkTime'),
+                    ),
+                    $q->expr()->andX(
+                        $q->expr()->gte('recovery_time', ':endNotWorkTime'),
+                        $q->expr()->lte('recovery_time', ':startNotWorkTime'),
+                    )
+                )
+            )
+            ->setParameter('endNotWorkTime', $this->config['endNotWorkTime'])
+            ->setParameter('startNotWorkTime', $this->config['startNotWorkTime']);
         if ($this->getValue('host')) {
             $q->andWhere($q->expr()->eq('host', ':host'));
             $q->setParameter('host', $this->getValue('host'));
@@ -150,7 +175,30 @@ class ZabbixReportRepository
             $q->andWhere($q->expr()->eq('name', ':item'));
             $q->setParameter('item', $this->getValue('item'));
         }
-        return $q;
+
+        $q2 = $this->createQueryBuilder();
+        if ($this->getValue('item') || !$this->getValue('icmp')) {
+            $q2->addSelect('item');
+        }
+        $q2->addSelect('host')
+            ->addSelect('start')
+            ->addSelect('recovery')
+            ->addSelect(
+                <<<SELECT
+                CONCAT(
+                    CASE WHEN FLOOR(TIMESTAMPDIFF(SECOND, start, recovery) / 3600) > 9 THEN FLOOR(TIMESTAMPDIFF(SECOND, start, recovery) / 3600)
+                        ELSE LPAD(FLOOR(TIMESTAMPDIFF(SECOND, start, recovery) / 3600), 2, 0)
+                        END,':',
+                    LPAD(FLOOR((TIMESTAMPDIFF(SECOND, start, recovery) % 3600)/60), 2, 0), ':',
+                    LPAD(TIMESTAMPDIFF(SECOND, start, recovery) % 60, 2, 0)
+                ) AS duration
+                SELECT
+            );
+        $q2->from("($q)", 'x');
+        foreach ($q->getParameters() as $parameter => $value) {
+            $q2->setParameter($parameter, $value, $q->getParameterType($parameter));
+        }
+        return $q2;
     }
 
     private function setCols()
@@ -207,7 +255,8 @@ class ZabbixReportRepository
 
     public function getBaseReportQuery($filter)
     {
-        $cols = $filter->all();
+        $this->filter = $filter;
+        list($startTime, $recoveryTime) = $this->getStartRecoveryTime();
         $q = $this->createQueryBuilder();
         $q
             ->addSelect("start.eventid")
@@ -228,9 +277,11 @@ class ZabbixReportRepository
             )
             ->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS name")
             ->addSelect("FROM_UNIXTIME(start.clock, '%Y-%m-%d') AS start_date")
-            ->addSelect("FROM_UNIXTIME(start.clock, '%Y-%m-%d %H:%i:%s') AS start_time")
+            ->addSelect("FROM_UNIXTIME(start.clock, '%Y-%m-%d %H:%i:%s') AS start_datetime")
+            ->addSelect("FROM_UNIXTIME(start.clock, '%H:%i:%s') AS start_time")
             ->addSelect("FROM_UNIXTIME(recovery.clock, '%Y-%m-%d') AS recovery_date")
-            ->addSelect("FROM_UNIXTIME(recovery.clock, '%Y-%m-%d %H:%i:%s') AS recovery_time")
+            ->addSelect("FROM_UNIXTIME(recovery.clock, '%Y-%m-%d %H:%i:%s') AS recovery_datetime")
+            ->addSelect("FROM_UNIXTIME(recovery.clock, '%H:%i:%s') AS recovery_time")
             ->addSelect("FROM_UNIXTIME(start.clock,'%w') AS weekday")
             ->from('events',        'start')
             ->leftJoin('start',         'event_recovery', 'er',          'er.eventid = start.eventid')
@@ -270,8 +321,6 @@ class ZabbixReportRepository
                     )
                 )
             );
-        $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime'));
-        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('uptime'));
         $q->setParameter('startTime', $startTime->format('U'));
         $q->setParameter('recoveryTime', $recoveryTime->format('U'));
         return $q;
@@ -331,19 +380,17 @@ class ZabbixReportRepository
 
     public function saveDailyReport($row)
     {
-        $insert = <<<QUERY
-            INSERT INTO {$_ENV['DB_NAME_SUMMARY']}.base
-            (eventid, host, icmp, name, multidate, start_date, start_time, recovery_date, recovery_time, duration, weekday)
-            VALUES
-            (:eventid, :host, :icmp, :name, :multidate, :start_date, :start_time, :recovery_date, :recovery_time, :duration, :weekday)
-            QUERY;
+        $insert = "INSERT INTO {$_ENV['DB_NAME_SUMMARY']}.base\n(";
+        $insert.= implode(', ', array_keys($row)) . ") VALUES\n(:";
+        $insert.= implode(', :', array_keys($row)) . ")";
+
         $conn = $this->conn->getWrappedConnection();
         try {
-            $stmt = $conn->prepare($insert);
             foreach ($row as $key => $value) {
                 $row[':'.$key] = $value;
                 unset($row[$key]);
             }
+            $stmt = $conn->prepare($insert);
             $stmt->execute($row);
         } catch (Exception $e) { }
     }

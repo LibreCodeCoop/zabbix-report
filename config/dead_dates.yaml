@@ -3,3 +3,5 @@ weekday:
   - 6
 notWorkDay:
   - "2019-11-11"
+startNotWorkTime: "18:00:00"
+endNotWorkTime: "09:00:00"
