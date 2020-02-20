@@ -67,7 +67,10 @@ class ReportController extends BaseController
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) use($request) {
                 $report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $request]);
-                return $report->getQueryDescritivo();
+                try {
+                    return $report->getQueryDescritivo();
+                } catch (\Throwable $th) {
+                }
             }
         ]);
         $table->handleRequest($request);
@@ -137,7 +140,10 @@ class ReportController extends BaseController
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) use($request) {
                 $report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $request]);
-                return $report->getQueryConsolidado();
+                try {
+                    return $report->getQueryConsolidado();
+                } catch (\Throwable $th) {
+                }
             }
         ]);
         $table->handleRequest($request);
