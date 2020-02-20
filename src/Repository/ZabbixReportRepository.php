@@ -133,15 +133,6 @@ class ZabbixReportRepository
                     END AS recovery
                 SELECT
             )
-            ->addSelect(
-                <<<SELECT
-                CONCAT(
-                    CASE WHEN FLOOR(duration / 3600) > 9 THEN FLOOR(duration / 3600) ELSE LPAD(FLOOR(duration / 3600), 2, 0) END,':',
-                    LPAD(FLOOR((duration % 3600)/60), 2, 0), ':',
-                    LPAD(duration % 60, 2, 0)
-                ) AS duration
-                SELECT
-            )
             ->from($_ENV['DB_NAME_SUMMARY'] . '.base')
             ->andWhere($q->expr()->gte('start_datetime', ':startTime'))
             ->andWhere($q->expr()->lte('recovery_datetime', ':recoveryTime'))
