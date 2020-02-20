@@ -88,7 +88,7 @@ $(document).ready( function () {
     $.getJSON("{{ path('report_list_item') }}",{host: $(this).val(), ajax: 'true'}, function(j){
       var options = '<option value selected>Selecione...</option>';
       for (var i = 0; i < j.length; i++) {
-        options += '<option value="' + j[i] + '">' + j[i] + '</option>';
+        options += '<option value="' + j[i]['value'] + '">' + j[i]['text'] + '</option>';
       }
       $("#item").html(options);
     })

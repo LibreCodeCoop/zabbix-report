@@ -299,21 +299,24 @@ class ZabbixReportRepository
     public function getAllItemsByHost(string $host): array
     {
         $q = $this->createQueryBuilder();
-        $q->select("TRIM(REGEXP_SUBSTR(name, 'onu_[0-9/: ]+')) AS onu")
+        $q->select("TRIM(REGEXP_SUBSTR(name, 'onu_[0-9/: ]+')) AS text")
+            ->addSelect('name AS value')
             ->from($_ENV['DB_NAME_SUMMARY'].'.base')
-            ->where(
-                $q->expr()->eq('host', ':host')
+            ->andWhere(
+                $q->expr()->eq('host', ':host'),
+                $q->expr()->eq('icmp', 0)
             )
             ->groupBy('name')
+            ->orderBy('text')
             ->having(
                 $q->expr()->andX(
-                    $q->expr()->neq('onu', "''"),
-                    $q->expr()->isNotNull('onu')
+                    $q->expr()->neq('name', "''"),
+                    $q->expr()->isNotNull('name')
                 )
             );
         $q->setParameter('host', $host);
         return $q->execute()
-            ->fetchAll(\PDO::FETCH_COLUMN);
+            ->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     public function saveDailyReport($row)
