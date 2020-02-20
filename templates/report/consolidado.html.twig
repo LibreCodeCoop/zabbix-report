@@ -142,20 +142,24 @@ $(document).ready( function () {
       }
       $(tfoot).toggle(data.length>0);
 
-      totalDowntime = 0;
-      totalUptime = 0;
+      totalDowntime = totalUptime = totalPercentDowntime = totalPercentUptime = 0;
       data.forEach(function(a){
-        totalDowntime += toSeconds(a.downtime)
-        totalUptime += toSeconds(a.uptime)
+        totalDowntime += toSeconds(a.downtime);
+        totalUptime += toSeconds(a.uptime);
       });
+      totalPercentDowntime = (totalDowntime * 100) / (totalDowntime + totalUptime);
+      totalPercentUptime = (totalUptime * 100) / (totalDowntime + totalUptime);
 
       if (data.length && $('input[name=icmp]:checked').val() == 0) {
         $(tfoot).find('td.col-item').show()
       } else {
         $(tfoot).find('td.col-item').hide()
       }
+
       $(tfoot).find('.col-downtime').html('<strong>'+fromSeconds(totalDowntime)+'</strong>')
       $(tfoot).find('.col-uptime').html('<strong>'+fromSeconds(totalUptime)+'</strong>')
+      $(tfoot).find('.col-percent-downtime').html('<strong>' + totalPercentDowntime.toFixed(2) + '</strong>')
+      $(tfoot).find('.col-percent-uptime').html('<strong>' + totalPercentUptime.toFixed(2) + '</strong>')
     }
     {% endif %}
   })

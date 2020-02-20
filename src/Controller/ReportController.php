@@ -111,23 +111,29 @@ class ReportController extends BaseController
             'label' => '< data/hora',
         ]);
         $table->add('downtime', TextColumn::class, [
-            'field' => 'downtime',
+            'field' => 'offline',
             'label' => 'offline',
-            'orderable' => false,
             'className' => 'col-downtime'
         ]);
-        $table->add('percent_downtime', TextColumn::class, ['field' => 'percent_downtime', 'label' => '% offline']);
+        $table->add('percent_downtime', TextColumn::class, [
+            'field' => 'percent_downtime',
+            'label' => '% offline',
+            'className' => 'col-percent-downtime'
+        ]);
         $table->add('uptime', TextColumn::class, [
-            'field' => 'uptime',
+            'field' => 'online',
             'label' => 'online',
-            'orderable' => false,
             'className' => 'col-uptime'
+        ]);
+        $table->add('percent_uptime', TextColumn::class, [
+            'field' => 'percent_uptime',
+            'label' => '% online',
+            'className' => 'col-percent-uptime'
         ]);
         $table->add('maxdatahora', TextColumn::class, [
             'field' => 'maxdatahora',
             'label' => '> data/hora',
         ]);
-        $table->add('percent_uptime', TextColumn::class, ['field' => 'percent_uptime', 'label' => '% online']);
         $table->createAdapter(DBALAdapter::class, [
             'query' => function($state) use($request) {
                 $report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $request]);
@@ -165,9 +171,10 @@ class ReportController extends BaseController
         return JsonResponse::create($items);
     }
 
-    private function viewCsv($report)
+    private function viewCsv($reportName)
     {
-        $qb = call_user_func([$this, 'getQuery' . ucfirst($report)]);
+        $report = new ZabbixReportRepository(['conn' => $this->conn, 'filter' => $this->request]);
+        $qb = call_user_func([$report, 'getQuery' . ucfirst($reportName)]);
         if (!$qb) {
             return;
         }

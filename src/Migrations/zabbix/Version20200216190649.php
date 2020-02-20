@@ -34,6 +34,7 @@ final class Version20200216190649 extends AbstractMigration
                 `start_time` datetime NOT NULL,
                 `recovery_date` date NOT NULL,
                 `recovery_time` datetime NOT NULL,
+                `duration` bigint(20) unsigned NOT NULL,
                 `weekday` tinyint(4) NOT NULL,
                 PRIMARY KEY (`eventid`,`start_time`,`recovery_time`),
                 KEY `base_host_IDX` (`host`) USING BTREE,

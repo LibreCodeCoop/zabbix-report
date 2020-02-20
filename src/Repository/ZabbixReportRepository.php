@@ -16,288 +16,183 @@ class ZabbixReportRepository
 
     public function getQueryConsolidado()
     {
-        if ($columns = $this->filter->get('columns')) {
-            foreach ($columns as $column) {
-                $cols[$column['name']] = $column['search']['value'];
-            }
-            if (isset($cols['downtime'])) {
-                list($cols['downtime'], $cols['downtime-time']) = explode(' ', $cols['downtime'] . ' ');
-            }
-            if (isset($cols['uptime'])) {
-                list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime'] . ' ');
-            }
-            if ($this->filter->get('search')) {
-                parse_str($this->filter->get('search')['value'], $body);
-                $cols = array_merge($cols, $body);
-            }
-        } elseif (!empty($this->filter->get('downtime'))) {
-            $cols = $this->filter->all();
-        }
-        if(!isset($cols) || !$this->getValue($cols, 'uptime') || !$this->getValue($cols, 'downtime')) {
-            return;
-        }
-
-        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime'). ' 00:00:00');
-        if ($value) {
-            if ($this->getValue($cols, 'downtime-time')) {
-                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime') . ' ' . $this->getValue($cols, 'downtime-time').':00');
-            } else {
-                $startTime = $value;
-            }
-        }
-        if (empty($startTime)) {
-            return;
-        }
-        $value = \DateTime::createFromFormat('Y-m-d', $this->getValue($cols, 'uptime'));
-        if ($value) {
-            if ($this->getValue($cols, 'uptime-time')) {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' ' . $this->getValue($cols, 'uptime-time').':59');
-            } else {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' 23:59:59');
-            }
-        }
-        if (empty($recoveryTime)) {
-            return;
-        }
+        list($startTime, $recoveryTime) = $this->getStartRecoveryTime();
 
         $decimalPlaces = $_ENV['DECIMAL_PLACES'];
-        $q1 = $this->createQueryBuilder();
-        $q1->addSelect('host');
-        if ($this->getValue($cols, 'item') || !$this->getValue($cols, 'icmp')) {
-            $q1->addSelect('onu AS item');
-        }
-        $q1->addSelect(
-            <<<SELECT
-            CONCAT(
-                CASE WHEN FLOOR(downtime / 3600) > 9 THEN FLOOR(downtime / 3600) ELSE LPAD(FLOOR(downtime / 3600), 2, 0) END,':',
-                LPAD(FLOOR((downtime % 3600)/60), 2, 0), ':',
-                LPAD(downtime % 60, 2, 0)
-            ) AS downtime
-            SELECT
-        );
-        $q1->addSelect("FROM_UNIXTIME(mindatahora, '%Y-%m-%d %H:%i:%s') AS mindatahora");
-        $q1->addSelect("FROM_UNIXTIME(maxdatahora, '%Y-%m-%d %H:%i:%s') AS maxdatahora");
-        $q1->addSelect("ROUND((downtime * 100 ) / total_time, $decimalPlaces) AS percent_downtime");
-        $q1->addSelect(
-            <<<SELECT
-            CONCAT(
-                CASE WHEN FLOOR((total_time - downtime) / 3600) > 9 THEN FLOOR((total_time - downtime) / 3600) ELSE LPAD(FLOOR((total_time - downtime) / 3600), 2, 0) END,':',
-                LPAD(FLOOR(((total_time - downtime) % 3600)/60), 2, 0), ':',
-                LPAD((total_time - downtime) % 60, 2, 0)
-            ) AS uptime
-            SELECT
-        );
-        $q1->addSelect("ROUND(((total_time - downtime) * 100 ) / total_time, $decimalPlaces) AS percent_uptime");
 
-        $q3 = $this->getBaseQuery();
-        $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
-        $q3->addSelect("CAST(recovery.clock - start.clock AS UNSIGNED) AS duration");
-        $q3->addSelect("start.clock AS start");
-        $q3->addSelect("recovery.clock AS recovery");
-        $q3->andWhere($q3->expr()->gte('start.clock', ':startTime'));
-        $q3->andWhere($q3->expr()->lte('recovery.clock', ':recoveryTime'));
-        $q1->setParameter('startTime', $startTime->format('U'));
-        $q1->setParameter('recoveryTime', $recoveryTime->format('U'));
-        if ($this->getValue($cols, 'host')) {
-            $value = substr(trim(strtolower($this->getValue($cols, 'host'))), 0, 30);
-            $q3->andWhere(
-                $q3->expr()->orX(
-                    $q3->expr()->like('LOWER(hosts.host)', ':host'),
-                    $q3->expr()->like('LOWER(alert_start.message)', ':host')
-                )
-            );
-            $q1->setParameter('host', '%' . $value . '%');
+        $q = $this->createQueryBuilder();
+        if ($this->getValue('item') || !$this->getValue('icmp')) {
+            $q
+                ->addSelect('name AS item')
+                ->addGroupBy('name');
         }
-        if ($this->getValue($cols, 'item')) {
-            $value = substr(trim(strtolower($this->getValue($cols, 'item'))), 0, 30);
-            $q3->andWhere($q3->expr()->like('LOWER(start.name)', ':startName'));
-            $q1->setParameter('startName', '%' . $value . '%');
+        $q->addSelect('host')
+            ->addSelect('MIN(start_time) AS mindatahora')
+            ->addSelect('MAX(recovery_time) AS maxdatahora')
+            ->addSelect('SUM(duration) AS duration')
+            ->addSelect('TO_SECONDS(:recoveryTime) - TO_SECONDS(:startTime) AS total_time')
+            ->from($_ENV['DB_NAME_SUMMARY'] . '.base')
+            ->andWhere($q->expr()->gte('start_time', ':startTime'))
+            ->andWhere($q->expr()->lte('recovery_time', ':recoveryTime'))
+            ->setParameter('startTime', $startTime->format('Y-m-d H:i:s'))
+            ->setParameter('recoveryTime', $recoveryTime->format('Y-m-d H:i:s'))
+            ->andWhere($q->expr()->eq('icmp', ':icmp'))
+            ->setParameter('icmp', $this->getValue('icmp') == 1 ? 1 : 0)
+            ->addGroupBy('host');
+        if ($this->getValue('host')) {
+            $q->andWhere($q->expr()->eq('host', ':host'));
+            $q->setParameter('host', $this->getValue('host'));
         }
-        if ($this->getValue($cols, 'icmp') == 1) {
-            $q3->andWhere("start.name LIKE '%ICMP%'");
-            $q3->andWhere("LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+'");
-        } else {
-            $q3->andWhere("start.name NOT LIKE '%ICMP%'");
-            $q3->andWhere("LOWER(start.name) REGEXP 'onu_[0-9/: ]+'");
+        if ($this->getValue('item')) {
+            $q->andWhere($q->expr()->eq('name', ':item'));
+            $q->setParameter('item', $this->getValue('item'));
         }
 
         $q2 = $this->createQueryBuilder();
-        $q2->select([
-            'host',
-            'onu',
-            'MIN(start) AS mindatahora',
-            'MAX(recovery) AS maxdatahora',
-            'SUM(duration) AS downtime',
-            ':recoveryTime - :startTime AS total_time'
-        ]);
-        foreach ($q3->getParameters() as $parameter => $value) {
-            $q1->setParameter($parameter, $value, $q3->getParameterType($parameter));
+        $q2->addSelect('host');
+        if ($this->getValue('item') || !$this->getValue('icmp')) {
+            $q2->addSelect('item');
         }
-        $q2->from("($q3)", 'x');
-        $q2->groupBy(['host', 'onu']);
-        $q2->addOrderBy('host');
-        $q2->addOrderBy('onu');
-        $q1->from("($q2)", 'x2');
-        return $q1;
-    }
+        $q2->addSelect('mindatahora');
+        $q2->addSelect('maxdatahora');
+        $q2->addSelect('IF(duration>total_time,duration,total_time) AS total_time');
+        $q2->addSelect('duration');
+        foreach ($q->getParameters() as $parameter => $value) {
+            $q2->setParameter($parameter, $value, $q->getParameterType($parameter));
+        }
+        $q2->from("($q)", 'x');
 
-    public function getQueryDescritivo()
-    {
-        if ($columns = $this->filter->get('columns')) {
-            foreach ($columns as $column) {
-                $cols[$column['name']] = $column['search']['value'];
-            }
-            if (isset($cols['downtime'])) {
-                list($cols['downtime'], $cols['downtime-time']) = explode(' ', $cols['downtime'] . ' ');
-            }
-            if (isset($cols['uptime'])) {
-                list($cols['uptime'], $cols['uptime-time']) = explode(' ', $cols['uptime'] . ' ');
-            }
-            if ($this->filter->get('search')) {
-                parse_str($this->filter->get('search')['value'], $body);
-                $cols = array_merge($cols, $body);
-            }
-        } elseif (!empty($this->filter->get('downtime'))) {
-            $cols = $this->filter->all();
+        $q3 = $this->createQueryBuilder();
+        $q3->addSelect('host');
+        if ($this->getValue('item') || !$this->getValue('icmp')) {
+            $q3->addSelect('item');
         }
-        if(!isset($cols) || !$this->getValue($cols, 'uptime') || !$this->getValue($cols, 'downtime')) {
-            return;
-        }
-
-        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime'). ' 00:00:00');
-        if ($value) {
-            if ($this->getValue($cols, 'downtime-time')) {
-                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime') . ' ' . $this->getValue($cols, 'downtime-time').':00');
-            } else {
-                $startTime = $value;
-            }
-        }
-        if (empty($startTime)) {
-            return;
-        }
-        $value = \DateTime::createFromFormat('Y-m-d', $this->getValue($cols, 'uptime'));
-        if ($value) {
-            if ($this->getValue($cols, 'uptime-time')) {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' ' . $this->getValue($cols, 'uptime-time').':59');
-            } else {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime') . ' 23:59:59');
-            }
-        }
-        if (empty($recoveryTime)) {
-            return;
-        }
-
-        $q1 = $this->createQueryBuilder();
-        $q1->addSelect('host');
-        if ($this->getValue($cols, 'item') || !$this->getValue($cols, 'icmp')) {
-            $q1->addSelect('onu AS item');
-        }
-        $q1->addSelect("FROM_UNIXTIME(start, '%Y-%m-%d %H:%i:%s') AS start");
-        $q1->addSelect("FROM_UNIXTIME(recovery, '%Y-%m-%d %H:%i:%s') AS recovery");
-        $q1->addSelect(
+        $q3->addSelect(
+            <<<SELECT
+            CONCAT(
+                LPAD(HOUR(duration), 2, 0), ':',
+                LPAD(MINUTE(duration), 2, 0), ':',
+                LPAD(SECOND(duration), 2, 0)
+            ) AS downtime
+            SELECT
+        );
+        $q3->addSelect('mindatahora');
+        $q3->addSelect('maxdatahora');
+        $q3->addSelect("ROUND((duration * 100 ) / total_time, $decimalPlaces) AS percent_downtime");
+        $q3->addSelect(
             <<<SELECT
             CONCAT(
                 CASE WHEN FLOOR(duration / 3600) > 9 THEN FLOOR(duration / 3600) ELSE LPAD(FLOOR(duration / 3600), 2, 0) END,':',
                 LPAD(FLOOR((duration % 3600)/60), 2, 0), ':',
                 LPAD(duration % 60, 2, 0)
-            ) AS duration
+            ) AS offline
             SELECT
         );
-
-        $q3 = $this->getBaseQuery();
-        $q3->addSelect("REGEXP_REPLACE(start.name, \"(.*) (is Down|is Up)\", '\\\\1') AS onu");
-        $q3->addSelect("recovery.clock - start.clock AS duration");
-        $q3->addSelect("start.clock AS start");
-        $q3->addSelect("recovery.clock AS recovery");
-        $q3->andWhere($q3->expr()->gte('start.clock', ':startTime'));
-        $q3->andWhere($q3->expr()->lte('recovery.clock', ':recoveryTime'));
-        $q1->setParameter('startTime', $startTime->format('U'));
-        $q1->setParameter('recoveryTime', $recoveryTime->format('U'));
-        if ($this->getValue($cols, 'host')) {
-            $value = substr(trim(strtolower($this->getValue($cols, 'host'))), 0, 30);
-            $q3->andWhere(
-                $q3->expr()->orX(
-                    $q3->expr()->like('LOWER(hosts.host)', ':host'),
-                    $q3->expr()->like('LOWER(alert_start.message)', ':host')
-                )
-            );
-            $q1->setParameter('host', '%' . $value . '%');
+        $q3->addSelect(
+            <<<SELECT
+            CONCAT(
+                CASE WHEN FLOOR((total_time - duration) / 3600) > 9 THEN FLOOR((total_time - duration) / 3600) ELSE LPAD(FLOOR((total_time - duration) / 3600), 2, 0) END,':',
+                LPAD(FLOOR(((total_time - duration) % 3600)/60), 2, 0), ':',
+                LPAD((total_time - duration) % 60, 2, 0)
+            ) AS online
+            SELECT
+        );
+        $q3->addSelect("ROUND(((total_time - duration) * 100 ) / total_time, $decimalPlaces) AS percent_uptime");
+        $q3->from("($q2)", 'x');
+        foreach ($q2->getParameters() as $parameter => $value) {
+            $q3->setParameter($parameter, $value, $q2->getParameterType($parameter));
         }
-        if ($this->getValue($cols, 'item')) {
-            $value = substr(trim(strtolower($this->getValue($cols, 'item'))), 0, 30);
-            $q3->andWhere($q3->expr()->like('LOWER(start.name)', ':startName'));
-            $q1->setParameter('startName', '%' . $value . '%');
-        }
-        if ($this->getValue($cols, 'icmp') == 1) {
-            $q3->andWhere("start.name LIKE '%ICMP%'");
-            $q3->andWhere("LOWER(start.name) NOT REGEXP 'onu_[0-9/: ]+'");
-        } else {
-            $q3->andWhere("start.name NOT LIKE '%ICMP%'");
-            $q3->andWhere("LOWER(start.name) REGEXP 'onu_[0-9/: ]+'");
-        }
-
-        $q2 = $this->createQueryBuilder();
-        $q2->select([
-            'host',
-            'onu',
-            'start',
-            'recovery',
-            'CAST(recovery - start AS UNSIGNED) AS duration'
-        ]);
-        foreach ($q3->getParameters() as $parameter => $value) {
-            $q1->setParameter($parameter, $value, $q3->getParameterType($parameter));
-        }
-        $q2->from("($q3)", 'x');
-        $q2->addOrderBy('host');
-        $q2->addOrderBy('onu');
-        $q1->from("($q2)", 'x2');
-        return $q1;
+        return $q3;
     }
 
-    /**
-     * @return \Doctrine\DBAL\Query\QueryBuilder
-     */
-    private function getBaseQuery(): \Doctrine\DBAL\Query\QueryBuilder
+    public function getQueryDescritivo()
     {
-        $queryBuilder = $this->createQueryBuilder();
-        $queryBuilder
-            ->select(
-                <<<QUERY
-                CASE WHEN hosts.host IS NOT NULL THEN hosts.host
-                    WHEN alert_start.message LIKE '%Host:%' THEN TRIM(TRAILING '\\r' FROM TRIM(TRAILING '\\n' FROM REPLACE(REGEXP_SUBSTR(alert_start.message, 'Host:.*\\n'), 'Host: ', '')))
-                    WHEN alert_start.message LIKE '%<b>%' THEN REPLACE(REPLACE(REGEXP_SUBSTR(alert_start.message, '<b>.*</b>'), '<b> ', ''), ' </b>', '')
-                END AS host
-                QUERY
+        list($startTime, $recoveryTime) = $this->getStartRecoveryTime();
+
+        $q = $this->createQueryBuilder();
+        if ($this->getValue('item') || !$this->getValue('icmp')) {
+            $q->addSelect('name AS item');
+        }
+        $q->addSelect('host')
+            ->addSelect('start_time AS start')
+            ->addSelect('recovery_time AS recovery')
+            ->addSelect(
+                <<<SELECT
+                CONCAT(
+                    CASE WHEN FLOOR(duration / 3600) > 9 THEN FLOOR(duration / 3600) ELSE LPAD(FLOOR(duration / 3600), 2, 0) END,':',
+                    LPAD(FLOOR((duration % 3600)/60), 2, 0), ':',
+                    LPAD(duration % 60, 2, 0)
+                ) AS duration
+                SELECT
             )
-            ->from('events', 'start')
-            ->join('start',         'event_recovery', 'er',          'er.eventid = start.eventid')
-            ->join('er',            'events',         'recovery',    'recovery.eventid = er.r_eventid')
-            ->leftJoin('start',     'alerts',         'alert_start', 'alert_start.eventid = start.eventid AND alert_start.mediatypeid = 5')
-            ->leftJoin('start',     'triggers',       'triggers',    'start.objectid = triggers.triggerid')
-            ->leftJoin('triggers',  'functions',      'functions',   'functions.triggerid = triggers.triggerid')
-            ->leftJoin('functions', 'items',          'items',       'items.itemid = functions.itemid')
-            ->leftJoin('items',     'hosts',          'hosts',       'items.hostid = hosts.hostid')
-            ->where(
-                $queryBuilder->expr()->andX(
-                    $queryBuilder->expr()->orX(
-                        $queryBuilder->expr()->eq('start.severity', 5),
-                        $queryBuilder->expr()->eq('recovery.severity', 0)
-                    ),
-                    $queryBuilder->expr()->orX(
-                        $queryBuilder->expr()->like('start.name', "'%ICMP%'"),
-                        $queryBuilder->expr()->comparison('LOWER(start.name)', 'REGEXP', "'onu_[0-9/: ]+'")
-                    ),
-                    $queryBuilder->expr()->orX(
-                        $queryBuilder->expr()->andX(
-                            $queryBuilder->expr()->isNotNull('hosts.host'),
-                            $queryBuilder->expr()->neq('hosts.host', "''")
-                        ),
-                        $queryBuilder->expr()->like('alert_start.message', "'%Host:%'"),
-                        $queryBuilder->expr()->like('alert_start.message', "'%<b>%'")
-                    )
-                )
-            );
-        return $queryBuilder;
+            ->from($_ENV['DB_NAME_SUMMARY'] . '.base')
+            ->andWhere($q->expr()->gte('start_time', ':startTime'))
+            ->andWhere($q->expr()->lte('recovery_time', ':recoveryTime'))
+            ->setParameter('startTime', $startTime->format('Y-m-d H:i:s'))
+            ->setParameter('recoveryTime', $recoveryTime->format('Y-m-d H:i:s'))
+            ->andWhere($q->expr()->eq('icmp', ':icmp'))
+            ->setParameter('icmp', $this->getValue('icmp') == 1 ? 1 : 0);
+        if ($this->getValue('host')) {
+            $q->andWhere($q->expr()->eq('host', ':host'));
+            $q->setParameter('host', $this->getValue('host'));
+        }
+        if ($this->getValue('item')) {
+            $q->andWhere($q->expr()->eq('name', ':item'));
+            $q->setParameter('item', $this->getValue('item'));
+        }
+        return $q;
+    }
+
+    private function setCols()
+    {
+        if ($columns = $this->filter->get('columns')) {
+            foreach ($columns as $column) {
+                $this->cols[$column['name']] = $column['search']['value'];
+            }
+            if (isset($this->cols['downtime'])) {
+                list($this->cols['downtime'], $this->cols['downtime-time']) = explode(' ', $this->cols['downtime'] . ' ');
+            }
+            if (isset($this->cols['uptime'])) {
+                list($this->cols['uptime'], $this->cols['uptime-time']) = explode(' ', $this->cols['uptime'] . ' ');
+            }
+            if ($this->filter->get('search')) {
+                parse_str($this->filter->get('search')['value'], $body);
+                $this->cols = array_merge($this->cols, $body);
+            }
+        } elseif (!empty($this->filter->get('downtime'))) {
+            $this->cols = $this->filter->all();
+        }
+        if(!isset($this->cols) || !$this->getValue('uptime') || !$this->getValue('downtime')) {
+            throw new Exception('Valores de filtro inválidos');
+        }
+    }
+
+    private function getStartRecoveryTime()
+    {
+        $this->setCols();
+        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime'). ' 00:00:00');
+        if ($value) {
+            if ($this->getValue('downtime-time')) {
+                $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime') . ' ' . $this->getValue('downtime-time').':00');
+            } else {
+                $startTime = $value;
+            }
+        }
+        if (empty($startTime)) {
+            throw new Exception('Data início inválida');
+        }
+        $value = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'));
+        if ($value) {
+            if ($this->getValue('uptime-time')) {
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('uptime') . ' ' . $this->getValue('uptime-time').':59');
+            } else {
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'))->add(new \DateInterval('P1D'));
+            }
+        }
+        if (empty($recoveryTime)) {
+            throw new Exception('Data fim inválida');
+        }
+        return [$startTime, $recoveryTime];
     }
 
     public function getBaseReportQuery($filter)
@@ -365,20 +260,20 @@ class ZabbixReportRepository
                     )
                 )
             );
-        $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'downtime'));
-        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue($cols, 'uptime'));
+        $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime'));
+        $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('uptime'));
         $q->setParameter('startTime', $startTime->format('U'));
         $q->setParameter('recoveryTime', $recoveryTime->format('U'));
         return $q;
     }
 
-    private function getValue($columns, $key)
+    private function getValue($key)
     {
-        if (isset($columns[$key]['search'])) {
-            return $columns[$key]['search'];
+        if (isset($this->cols[$key]['search'])) {
+            return $this->cols[$key]['search'];
         }
-        if (isset($columns[$key])) {
-            return $columns[$key];
+        if (isset($this->cols[$key])) {
+            return $this->cols[$key];
         }
     }
 
@@ -425,9 +320,9 @@ class ZabbixReportRepository
     {
         $insert = <<<QUERY
             INSERT INTO {$_ENV['DB_NAME_SUMMARY']}.base
-            (eventid, host, icmp, name, multidate, start_date, start_time, recovery_date, recovery_time, weekday)
+            (eventid, host, icmp, name, multidate, start_date, start_time, recovery_date, recovery_time, duration, weekday)
             VALUES
-            (:eventid, :host, :icmp, :name, :multidate, :start_date, :start_time, :recovery_date, :recovery_time, :weekday)
+            (:eventid, :host, :icmp, :name, :multidate, :start_date, :start_time, :recovery_date, :recovery_time, :duration, :weekday)
             QUERY;
         $conn = $this->conn->getWrappedConnection();
         try {

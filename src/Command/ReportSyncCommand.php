@@ -97,9 +97,11 @@ class ReportSyncCommand extends DoctrineCommand
                     if ($endCurrentDay->format('Y-m-d') >= $recovery->format('Y-m-d')) {
                         $row['recovery_date'] = $recovery->format('Y-m-d');
                         $row['recovery_time'] = $recovery->format('Y-m-d H:i:s');
+                        $row['duration'] = $recovery->getTimestamp() - $start->getTimestamp();
                     } else {
                         $row['recovery_date'] = $endCurrentDay->format('Y-m-d');
                         $row['recovery_time'] = $endCurrentDay->format('Y-m-d H:i:s');
+                        $row['duration'] = $endCurrentDay->getTimestamp() - $start->getTimestamp();
                     }
                     $report->saveDailyReport($row);
                     $start->add(new \DateInterval('P1D'))->setTime(0,0,0);
