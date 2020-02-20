@@ -3,6 +3,7 @@ namespace App\Repository;
 
 use Exception;
 use PDO;
+use Symfony\Component\Yaml\Yaml;
 
 class ZabbixReportRepository
 {
@@ -12,6 +13,7 @@ class ZabbixReportRepository
     {
         $this->conn = $params['conn'];
         $this->filter = isset($params['filter'])?$params['filter']:null;
+        $this->config = Yaml::parse(file_get_contents(__DIR__.'../../../config/dead_dates.yaml'));
     }
 
     public function getQueryConsolidado()
@@ -38,6 +40,10 @@ class ZabbixReportRepository
             ->setParameter('recoveryTime', $recoveryTime->format('Y-m-d H:i:s'))
             ->andWhere($q->expr()->eq('icmp', ':icmp'))
             ->setParameter('icmp', $this->getValue('icmp') == 1 ? 1 : 0)
+            ->andWhere($q->expr()->notIn('weekday',':weekDays'))
+            ->setParameter('weekDays', $this->config['weekday'], \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
+            ->andWhere($q->expr()->notIn('start_date', ':notWorkDay'))
+            ->setParameter('notWorkDay', $this->config['notWorkDay'], \Doctrine\DBAL\Connection::PARAM_STR_ARRAY)
             ->addGroupBy('host');
         if ($this->getValue('host')) {
             $q->andWhere($q->expr()->eq('host', ':host'));
@@ -131,7 +137,11 @@ class ZabbixReportRepository
             ->setParameter('startTime', $startTime->format('Y-m-d H:i:s'))
             ->setParameter('recoveryTime', $recoveryTime->format('Y-m-d H:i:s'))
             ->andWhere($q->expr()->eq('icmp', ':icmp'))
-            ->setParameter('icmp', $this->getValue('icmp') == 1 ? 1 : 0);
+            ->setParameter('icmp', $this->getValue('icmp') == 1 ? 1 : 0)
+            ->andWhere($q->expr()->notIn('weekday',':weekDays'))
+            ->setParameter('weekDays', $this->config['weekday'], \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
+            ->andWhere($q->expr()->notIn('start_date', ':notWorkDay'))
+            ->setParameter('notWorkDay', $this->config['notWorkDay'], \Doctrine\DBAL\Connection::PARAM_STR_ARRAY);
         if ($this->getValue('host')) {
             $q->andWhere($q->expr()->eq('host', ':host'));
             $q->setParameter('host', $this->getValue('host'));
