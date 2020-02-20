@@ -116,6 +116,7 @@ class ReportController extends BaseController
         $table->add('downtime', TextColumn::class, [
             'field' => 'offline',
             'label' => 'offline',
+            'orderable' => false,
             'className' => 'col-downtime'
         ]);
         $table->add('percent_downtime', TextColumn::class, [
@@ -126,6 +127,7 @@ class ReportController extends BaseController
         $table->add('uptime', TextColumn::class, [
             'field' => 'online',
             'label' => 'online',
+            'orderable' => false,
             'className' => 'col-uptime'
         ]);
         $table->add('percent_uptime', TextColumn::class, [
