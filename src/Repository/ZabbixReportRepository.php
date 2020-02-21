@@ -24,14 +24,23 @@ class ZabbixReportRepository
         $q = $this->createQueryBuilder();
         if ($this->getValue('item') || !$this->getValue('icmp')) {
             $q
-                ->addSelect('name AS item')
-                ->addGroupBy('name');
+                ->addSelect('name AS item');
         }
         $q->addSelect('host')
-            ->addSelect('MIN(start_datetime) AS mindatahora')
-            ->addSelect('MAX(recovery_datetime) AS maxdatahora')
-            ->addSelect('SUM(duration) AS duration')
-            ->addSelect('TO_SECONDS(:recoveryTime) - TO_SECONDS(:startTime) AS total_time')
+            ->addSelect(
+                <<<SELECT
+                CASE WHEN start_time > :endNotWorkTime THEN start_datetime
+                    ELSE CONCAT(start_date, ' ', :endNotWorkTime)
+                    END AS start
+                SELECT
+            )
+            ->addSelect(
+                <<<SELECT
+                CASE WHEN recovery_time > :startNotWorkTime OR recovery_time = '00:00:00' THEN CONCAT(start_date, ' ', :startNotWorkTime)
+                    ELSE recovery_datetime
+                    END AS recovery
+                SELECT
+            )
             ->from($_ENV['DB_NAME_SUMMARY'] . '.base')
             ->andWhere($q->expr()->gte('start_datetime', ':startTime'))
             ->andWhere($q->expr()->lte('recovery_datetime', ':recoveryTime'))
@@ -43,7 +52,20 @@ class ZabbixReportRepository
             ->setParameter('weekDays', $this->config['weekday'], \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
             ->andWhere($q->expr()->notIn('start_date', ':notWorkDay'))
             ->setParameter('notWorkDay', $this->config['notWorkDay'], \Doctrine\DBAL\Connection::PARAM_STR_ARRAY)
-            ->addGroupBy('host');
+            ->andWhere(
+                $q->expr()->orX(
+                    $q->expr()->andX(
+                        $q->expr()->gte('start_time', ':endNotWorkTime'),
+                        $q->expr()->lte('start_time', ':startNotWorkTime'),
+                    ),
+                    $q->expr()->andX(
+                        $q->expr()->gte('recovery_time', ':endNotWorkTime'),
+                        $q->expr()->lte('recovery_time', ':startNotWorkTime'),
+                    )
+                )
+            )
+            ->setParameter('endNotWorkTime', $this->config['endNotWorkTime'])
+            ->setParameter('startNotWorkTime', $this->config['startNotWorkTime']);
         if ($this->getValue('host')) {
             $q->andWhere($q->expr()->eq('host', ':host'));
             $q->setParameter('host', $this->getValue('host'));
@@ -54,18 +76,20 @@ class ZabbixReportRepository
         }
 
         $q2 = $this->createQueryBuilder();
-        $q2->addSelect('host');
+        $q2->addSelect('host')
+            ->addSelect('TO_SECONDS(:recoveryTime) - TO_SECONDS(:startTime) AS total_time');
         if ($this->getValue('item') || !$this->getValue('icmp')) {
-            $q2->addSelect('item');
+            $q2->addSelect('item')
+                ->addGroupBy('item');
         }
-        $q2->addSelect('mindatahora');
-        $q2->addSelect('maxdatahora');
-        $q2->addSelect('IF(duration>total_time,duration,total_time) AS total_time');
-        $q2->addSelect('duration');
+        $q2->addSelect('MIN(start) mindatahora');
+        $q2->addSelect('MAX(recovery) maxdatahora');
+        $q2->addSelect('SUM(TIMESTAMPDIFF(SECOND, start, recovery)) AS duration');
+        $q2->from("($q)", 'x')
+            ->addGroupBy(['host']);
         foreach ($q->getParameters() as $parameter => $value) {
             $q2->setParameter($parameter, $value, $q->getParameterType($parameter));
         }
-        $q2->from("($q)", 'x');
 
         $q3 = $this->createQueryBuilder();
         $q3->addSelect('host');
@@ -75,9 +99,9 @@ class ZabbixReportRepository
         $q3->addSelect(
             <<<SELECT
             CONCAT(
-                LPAD(HOUR(duration), 2, 0), ':',
-                LPAD(MINUTE(duration), 2, 0), ':',
-                LPAD(SECOND(duration), 2, 0)
+                CASE WHEN FLOOR(duration / 3600) > 9 THEN FLOOR(duration / 3600) ELSE LPAD(FLOOR(duration / 3600), 2, 0) END,':',
+                LPAD(FLOOR((duration % 3600)/60), 2, 0), ':',
+                LPAD(duration % 60, 2, 0)
             ) AS downtime
             SELECT
         );
