@@ -243,23 +243,21 @@ class ZabbixReportRepository
     private function getStartRecoveryTime()
     {
         $this->setCols();
-        $value = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime'). ' 00:00:00');
-        if ($value) {
+        $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime'). ' 00:00:00');
+        if ($startTime) {
             if ($this->getValue('downtime-time')) {
                 $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('downtime') . ' ' . $this->getValue('downtime-time').':00');
-            } else {
-                $startTime = $value;
             }
         }
         if (empty($startTime)) {
             throw new Exception('Data início inválida');
         }
-        $value = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'));
-        if ($value) {
+        $recoveryTime = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'));
+        if ($recoveryTime) {
             if ($this->getValue('uptime-time')) {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('uptime') . ' ' . $this->getValue('uptime-time').':59');
+                $recoveryTime = \DateTime::createFromFormat('Y-m-d H:i:s', $this->getValue('uptime') . ' ' . $this->getValue('uptime-time').':00');
             } else {
-                $recoveryTime = \DateTime::createFromFormat('Y-m-d', $this->getValue('uptime'))->add(new \DateInterval('P1D'))->setTime(0,0,0);
+                $recoveryTime->add(new \DateInterval('P1D'))->setTime(0,0,0);
             }
         }
         if (empty($recoveryTime)) {
