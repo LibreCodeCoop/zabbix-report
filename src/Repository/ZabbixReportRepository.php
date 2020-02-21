@@ -76,8 +76,7 @@ class ZabbixReportRepository
         }
 
         $q2 = $this->createQueryBuilder();
-        $q2->addSelect('host')
-            ->addSelect('TO_SECONDS(:recoveryTime) - TO_SECONDS(:startTime) AS total_time');
+        $q2->addSelect('host');
         if ($this->getValue('item') || !$this->getValue('icmp')) {
             $q2->addSelect('item')
                 ->addGroupBy('item');
@@ -107,7 +106,7 @@ class ZabbixReportRepository
         );
         $q3->addSelect('mindatahora');
         $q3->addSelect('maxdatahora');
-        $q3->addSelect("ROUND((duration * 100 ) / total_time, $decimalPlaces) AS percent_downtime");
+        $q3->addSelect("ROUND((duration * 100 ) / :totalTime, $decimalPlaces) AS percent_downtime");
         $q3->addSelect(
             <<<SELECT
             CONCAT(
@@ -120,13 +119,14 @@ class ZabbixReportRepository
         $q3->addSelect(
             <<<SELECT
             CONCAT(
-                CASE WHEN FLOOR((total_time - duration) / 3600) > 9 THEN FLOOR((total_time - duration) / 3600) ELSE LPAD(FLOOR((total_time - duration) / 3600), 2, 0) END,':',
-                LPAD(FLOOR(((total_time - duration) % 3600)/60), 2, 0), ':',
-                LPAD((total_time - duration) % 60, 2, 0)
+                CASE WHEN FLOOR((:totalTime - duration) / 3600) > 9 THEN FLOOR((:totalTime - duration) / 3600) ELSE LPAD(FLOOR((:totalTime - duration) / 3600), 2, 0) END,':',
+                LPAD(FLOOR(((:totalTime - duration) % 3600)/60), 2, 0), ':',
+                LPAD((:totalTime - duration) % 60, 2, 0)
             ) AS online
             SELECT
         );
-        $q3->addSelect("ROUND(((total_time - duration) * 100 ) / total_time, $decimalPlaces) AS percent_uptime");
+        $q3->addSelect("ROUND(((:totalTime - duration) * 100 ) / :totalTime, $decimalPlaces) AS percent_uptime");
+        $q3->setParameter('totalTime', $this->totalSeconds($startTime, $recoveryTime));
         $q3->from("($q2)", 'x');
         foreach ($q2->getParameters() as $parameter => $value) {
             $q3->setParameter($parameter, $value, $q2->getParameterType($parameter));
@@ -406,5 +406,37 @@ class ZabbixReportRepository
             $stmt = $conn->prepare($insert);
             $stmt->execute($row);
         } catch (Exception $e) { }
+    }
+
+    private function totalSeconds(\DateTime $start, \DateTime $stop): int
+    {
+        if ($stop->format('H:i:s') == '00:00:00') {
+            $stop->sub(new \DateInterval('P1D'));
+        }
+        $seconds = 0;
+        $stopDate = $stop->format('Y-m-d');
+        do {
+            $startDate = $start->format('Y-m-d');
+            if ($startDate == $stopDate) {
+                $start = clone $stop;
+            }
+            if (in_array($start->format('w'), $this->config['weekday']) || in_array($start->format('Y-m-d'), $this->config['notWorkDay'])) {
+                $start->add(new \DateInterval('P1D'))->setTime(0,0,0);
+                continue;
+            }
+            $startTime = $start->format('H:i:s');
+            if ($startTime < $this->config['endNotWorkTime']) {
+                $startTime = $this->config['endNotWorkTime'];
+            }
+            $stopTime = $startTime;
+            if ($stopTime < $this->config['startNotWorkTime']) {
+                $stopTime = $this->config['startNotWorkTime'];
+            }
+            $startTime = \DateTime::createFromFormat('Y-m-d H:i:s', $startDate . ' '. $startTime);
+            $stopTime = \DateTime::createFromFormat('Y-m-d H:i:s', $startDate . ' '. $stopTime);
+            $seconds+= $stopTime->getTimestamp() - $startTime->getTimestamp();
+            $start->add(new \DateInterval('P1D'))->setTime(0,0,0);
+        } while($start <= $stop);
+        return $seconds;
     }
 }
