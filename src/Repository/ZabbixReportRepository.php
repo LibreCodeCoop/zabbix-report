@@ -66,6 +66,10 @@ class ZabbixReportRepository
             )
             ->setParameter('endNotWorkTime', $this->config['endNotWorkTime'])
             ->setParameter('startNotWorkTime', $this->config['startNotWorkTime']);
+        if ($this->config['ignoredEvents']) {
+            $q->andWhere($q->expr()->notIn('eventid', ':ignoredEvents'));
+            $q->setParameter('ignoredEvents', $this->config['ignoredEvents'], \Doctrine\DBAL\Connection::PARAM_INT_ARRAY);
+        }
         if ($this->getValue('host')) {
             $q->andWhere($q->expr()->eq('host', ':host'));
             $q->setParameter('host', $this->getValue('host'));
@@ -143,6 +147,8 @@ class ZabbixReportRepository
             $q->addSelect('name AS item');
         }
         $q->addSelect('host')
+            ->addSelect('eventid')
+            ->addSelect('multidate')
             ->addSelect(
                 <<<SELECT
                 CASE WHEN start_time > :endNotWorkTime THEN start_datetime
@@ -182,6 +188,10 @@ class ZabbixReportRepository
             )
             ->setParameter('endNotWorkTime', $this->config['endNotWorkTime'])
             ->setParameter('startNotWorkTime', $this->config['startNotWorkTime']);
+        if ($this->config['ignoredEvents']) {
+            $q->andWhere($q->expr()->notIn('eventid', ':ignoredEvents'));
+            $q->setParameter('ignoredEvents', $this->config['ignoredEvents'], \Doctrine\DBAL\Connection::PARAM_INT_ARRAY);
+        }
         if ($this->getValue('host')) {
             $q->andWhere($q->expr()->eq('host', ':host'));
             $q->setParameter('host', $this->getValue('host'));
@@ -196,6 +206,8 @@ class ZabbixReportRepository
             $q2->addSelect('item');
         }
         $q2->addSelect('host')
+            ->addSelect('eventid')
+            ->addSelect('multidate')
             ->addSelect('start')
             ->addSelect('recovery')
             ->addSelect(

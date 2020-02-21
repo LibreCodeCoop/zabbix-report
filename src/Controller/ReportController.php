@@ -41,6 +41,14 @@ class ReportController extends BaseController
             return $this->viewCsv('descritivo');
         }
         $table = $dataTableFactory->create();
+        $table->add('eventid', TextColumn::class, [
+            'field' => 'eventid',
+            'label' => 'id'
+        ]);
+        $table->add('multidate', TextColumn::class, [
+            'field' => 'multidate',
+            'label' => 'Recorrente'
+        ]);
         $table->add('host', TextColumn::class, [
             'field' => 'host',
             'label' => 'Host'
