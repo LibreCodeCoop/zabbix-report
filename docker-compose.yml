@@ -17,6 +17,8 @@ services:
     volumes:
       - .:/app
       - ~/.composer:/root/.composer
+    env_file:
+      - .env
     environment:
       XDEBUG_CONFIG: "remote_host=172.17.0.1 remote_enable=1"
   nodejs:
