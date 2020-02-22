@@ -73,7 +73,7 @@ class DBALAdapter extends AbstractAdapter
     {
         /** @var \Doctrine\DBAL\Query\QueryBuilder $builder */
         $builder = $query->get('qb');
-        if (!$builder) {
+        if (!$builder || !$query->getTotalRows()) {
             return;
         }
         $state = $query->getState();
