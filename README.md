@@ -31,8 +31,11 @@ Copie o arquivo `.env.example` para `.env`.
 Execute o comando que segue na raiz do projeto:
 
 ```bash
+php bin/console doctrine:migrations:migrate
 php -S localhost:8000
 ```
+
+A migration é preciso ser executada apenas uma vez.
 
 ## Geração de release
 
@@ -40,5 +43,29 @@ Clone o projeto, execute `composer install` e rode o comando que segue para
 criar o pacote da nova release:
 
 ```bash
-zip -r zabbix-report.zip composer.* .env index.php LICENSE README.md src/ vendor/
+zip -r zabbix-report.zip . -x '.docker/volumes/*' 'var/*' '*.sql' '.vscode/*' '.git/*' '.env'
 ```
+
+> **OBS**: Lembre-se de desativar o debug e habilitar o cache do twig `config/packages/twig.yaml`
+
+## Configuração
+
+Os arquivos de configuração encontram-se na pasta `config`.
+
+### Configuração de filtros de exclusão
+
+Edite o arquivo `config/dead_dates.yaml` para informar os filtros de exclusão.
+
+#### weekday
+Exclui dias da semana.
+
+Para o filtro weekday, 0 = domingo
+
+#### ignoredEvents
+Exclui eventos do relatório. Utilize o relatório descritivo para identificar os dias dos eventos. No relatório descritivo, a coluna recorrente indica eventos que duram mais de um dia.
+
+#### notWorkDay
+Dias que não se trabalha, feriados, pontos facultativos.
+
+#### startNotWorkTime & endNotWorkTime
+Início do horário de não trabalho e fim do horário de não trabalho. Se o expediente é de 9 às 18h, o início do horário de não trabalho é às `18:00:00` e o fim é às `09:00:00`.
