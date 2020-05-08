@@ -69,3 +69,19 @@ Dias que não se trabalha, feriados, pontos facultativos.
 
 #### startNotWorkTime & endNotWorkTime
 Início do horário de não trabalho e fim do horário de não trabalho. Se o expediente é de 9 às 18h, o início do horário de não trabalho é às `18:00:00` e o fim é às `09:00:00`.
+
+## Consolidação de relatórios
+
+É necessário agendar a execução da importação de relatórios em um agendador de tarefas em seu sistema operacional.
+
+Para execução diária da importação execute o comando abaixo uma vez por dia:
+
+```bash
+docker-compose exec php7 bin/console app:report-sync --connection default
+```
+
+Pra carga inicial de um intervalo de datas utilize start-date e end-date, maiores informações consulte o help do comando:
+
+```bash
+docker-compose exec php7 bin/console app:report-sync --help
+```

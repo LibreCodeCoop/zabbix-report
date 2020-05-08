@@ -14,6 +14,11 @@ set_time_limit(0);
 
 require dirname(__DIR__).'/vendor/autoload.php';
 
+if(file_exists('.env')) {
+    $dotenv = new Symfony\Component\Dotenv\Dotenv();
+    $dotenv->overload(__DIR__.'/../.env');
+}
+
 if (!class_exists(Application::class)) {
     throw new LogicException('You need to add "symfony/framework-bundle" as a Composer dependency.');
 }
