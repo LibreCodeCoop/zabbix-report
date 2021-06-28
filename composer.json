@@ -1,5 +1,5 @@
 {
-    "name": "lyseontech/zabbix-report",
+    "name": "librecodecoop/zabbix-report",
     "description": "Relatórios customizados para Zabbix",
     "license": "GPL-3.0-or-later",
     "require": {
