@@ -4,7 +4,7 @@ Geração de relatório de SLA para o Zabbix
 
 ## Instalação
 
-Baixe o arquivo zip da versão mais recente do projeto **[aqui](https://github.com/lyseontech/zabbix-report/releases/latest)**.
+Baixe o arquivo zip da versão mais recente do projeto **[aqui](https://github.com/librecodecoop/zabbix-report/releases/latest)**.
 
 Descompacte o projeto onde irá rodar a aplicação
 
